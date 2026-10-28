@@ -13,10 +13,10 @@ tags:
 - name: Auth
 - name: Dishes
 - name: Feedback
-- name: Guest Sessions
-  description: Operations for guest sessions
 - name: Group Reservations
   description: Operations for group reservations
+- name: Guest Sessions
+  description: Operations for guest sessions
 - name: Locations
 - name: Notifications
 - name: Orders
@@ -426,6 +426,59 @@ paths:
                 type: object
               example:
                 message: Feedback updated successfully.
+        '401':
+          description: Missing or invalid token
+        '500':
+          description: Internal server error
+  /group-reservations/{groupReservationId}/submit:
+    post:
+      x-generated: true
+      tags:
+      - Group Reservations
+      summary: POST /group-reservations/{groupReservationId}/submit
+      description: |-
+        Authorization: Cognito (`cognito_authorizer`). Only the owner of the parent reservation (`sub` == `reservation.customerId`) can submit the group pre-order.
+
+        Consolidates the group pre-order: takes only submitted guest sessions (the owner's session included, if submitted), groups their dishes by `dishId` summing quantities (items with quantity <= 0 or an empty `dishId` are ignored) and merges the result into the existing pre-order of the reservation. The response contains only the consolidated list from the guest sessions (in order of first appearance), not the whole order.
+
+        Merge rules (an order never gets a second line for the same `dishId`):
+        - no line for the dish yet - a new line is added with state `Pending`;
+        - existing `Pending` line - quantities are summed, the line stays `Pending`;
+        - existing `Confirmed` (any non-`Pending`, non-`Canceled`) line - quantities are summed and the line goes back to `Pending` (the waiter has to re-confirm it);
+        - existing `Canceled` line - the line is revived: `quantity` is set to the consolidated quantity and the state becomes `Pending`.
+
+        Processing order: all validations are done first; then the group reservation is claimed atomically (conditional update `status: Open -> Submitted`), so a repeated or concurrent submit returns `GroupReservationSubmitted` and never adds the quantities twice; then the order is saved with status `SubmittedByCustomer`. If saving the order fails, the group reservation is returned to `Open` (best effort) and the request fails, so the owner can retry.
+
+        Errors come in two shapes:
+        - business validation errors from the service: `{ "message": "...", "errorCode": "GroupReservationSubmitted" }` (`errorCode` is a string);
+        - everything else (path/body validation, 401, 403, 404): `{ "error": "..." }`.
+
+        - `400 Bad Request` (`{ "error" }`) - missing `groupReservationId` path parameter, invalid body or missing `reservationId`.
+        - `400 Bad Request` (`errorCode: "Unknown"`) - `reservationId` does not match the group reservation.
+        - `400 Bad Request` (`errorCode: "GroupReservationSubmitted"`) - the group reservation is already submitted (including a repeated or concurrent submit).
+        - `400 Bad Request` (`errorCode: "GroupReservationExpired"`) - the group reservation is closed.
+        - `400 Bad Request` (`errorCode: "Unknown"`) - no submitted guest sessions, or submitted sessions contain no dishes.
+        - `400 Bad Request` (`errorCode: "Unknown"`) - no active pre-order for the reservation (missing or cancelled).
+        - `401 Unauthorized` (`{ "error" }`) - no Cognito claims / `sub`.
+        - `403 Forbidden` (`{ "error" }`) - the caller is not the reservation owner.
+        - `404 Not Found` (`{ "error" }`) - group reservation or its parent reservation not found.
+      parameters:
+      - name: groupReservationId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                reservationId: string
         '401':
           description: Missing or invalid token
         '500':
@@ -1834,6 +1887,43 @@ paths:
                   createdAt: '2026-08-07T21:00:00Z'
                   type: string
                   username: string|null
+        '500':
+          description: Internal server error
+  /reservations/{reservationId}/guest-session-id:
+    get:
+      x-generated: true
+      tags:
+      - Reservations
+      summary: GET /reservations/{reservationId}/guest-session-id
+      description: |-
+        Authorization: Cognito (`cognito_authorizer`). Only the owner of the reservation (`sub` == `reservation.customerId`) can call it.
+
+        Returns the id of the reservation owner's own session in the group pre-order (`isOwnerSession: true`). Get-or-create: the owner session has a deterministic id `owner-{groupReservationId}` and is looked up by primary key (strongly consistent read); if it does not exist yet, it is created on the first call (name `"Owner"`, empty cart); subsequent calls return the same id. The owner session is not counted toward the guest limit.
+
+        Errors:
+        - `400 Bad Request` - missing `reservationId` path parameter.
+        - `401 Unauthorized` - no authorizer claims / no `sub` claim.
+        - `403 Forbidden` - the caller is not the owner of the reservation.
+        - `404 Not Found` - reservation not found, or the reservation has no group reservation (e.g. `guestCount` < 2).
+      parameters:
+      - name: reservationId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                guestSessionId: string
+        '401':
+          description: Missing or invalid token
         '500':
           description: Internal server error
   /reservations/{reservationId}/invite-token:

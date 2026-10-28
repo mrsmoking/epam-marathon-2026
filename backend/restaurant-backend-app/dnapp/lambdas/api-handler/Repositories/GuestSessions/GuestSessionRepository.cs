@@ -11,7 +11,8 @@ public class GuestSessionRepository(IDynamoDBContext context) : IGuestSessionRep
 {
     public async Task<GuestSession?> GetByGuestSessionId(string id) => await context.LoadAsync<GuestSession?>(id, new LoadConfig()
     {
-        OverrideTableName = ResourceNames.GuestSessionTableName
+        OverrideTableName = ResourceNames.GuestSessionTableName,
+        ConsistentRead = true
     });
 
     public async Task<GuestSession?> GetByGroupReservationId(string groupReservationId)
@@ -58,7 +59,8 @@ public class GuestSessionRepository(IDynamoDBContext context) : IGuestSessionRep
             IndexName = GlobalSecondaryIndexes.GuestSession.GroupReservationId
         }).GetRemainingAsync();
 
-        return result.Count;
+        // The owner's session is not a joined guest: the owner is already counted separately by callers.
+        return result.Count(s => !s.IsOwnerSession);
     }
 
     public async Task DeleteAsync(GuestSession session)

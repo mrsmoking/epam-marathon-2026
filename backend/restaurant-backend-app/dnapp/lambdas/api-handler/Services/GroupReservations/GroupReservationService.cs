@@ -1,15 +1,19 @@
 using APIHandler.Constants;
+using APIHandler.Constants.Orders;
 using APIHandler.Entities;
 using APIHandler.Exceptions;
 using APIHandler.Models.GroupReservation;
 using APIHandler.Models.GuestReservation;
 using APIHandler.Repositories.GroupReservations;
 using APIHandler.Repositories.GuestSessions;
+using APIHandler.Repositories.Orders;
 using APIHandler.Repositories.Reservations;
 using APIHandler.Repositories.Tables;
 using APIHandler.Services.Auth;
 using APIHandler.Services.Locations;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace APIHandler.Services.GroupReservations;
@@ -20,7 +24,8 @@ public class GroupReservationService(
     IReservationRepository reservationRepository,
     IGuestSessionRepository guestSessionRepository,
     IUserService userService,
-    ILocationService locationService) : IGroupReservationService
+    ILocationService locationService,
+    IOrderRepository orderRepository) : IGroupReservationService
 {
     private const string DefaultRestaurantName = "Green & Tasty";
 
@@ -141,6 +146,107 @@ public class GroupReservationService(
             throw new GroupReservationExpiredException();
 
         return new GetGroupInviteTokenResponse(groupReservation.ReservationToken);
+    }
+
+    public async Task<List<GroupPreOrderItemResponse>> SubmitGroupPreOrderAsync(string userId, string groupReservationId, string reservationId)
+    {
+        GroupReservation group = await groupReservationRepository.GetGroupReservationByIdAsync(groupReservationId)
+            ?? throw new GroupReservationNotFoundException();
+
+        Reservation reservation = await reservationRepository.GetReservationByIdAsync(group.ReservationId)
+            ?? throw new ReservationNotFoundException("Parent reservation not found.");
+
+        if (reservation.CustomerId != userId)
+            throw new ActionForbiddenException("Only the reservation owner can perform this action.");
+
+        if (group.ReservationId != reservationId)
+            throw new ValidationException("Reservation ID does not match the group reservation.");
+
+        if (group.Status == GroupReservationStatus.Submitted)
+            throw new GroupReservationSubmittedException();
+
+        if (group.Status == GroupReservationStatus.Closed)
+            throw new GroupReservationExpiredException();
+
+        List<GuestSession> sessions = await guestSessionRepository.GetAllByGroupReservationIdAsync(groupReservationId);
+        List<GuestSession> submittedSessions = sessions.Where(s => s.IsSubmitted).ToList();
+        if (submittedSessions.Count == 0)
+            throw new ValidationException("There are no submitted guest sessions in the group.");
+
+        List<GroupPreOrderItemResponse> consolidated = ConsolidateDishes(submittedSessions);
+        if (consolidated.Count == 0)
+            throw new ValidationException("Submitted guest sessions contain no dishes.");
+
+        Order? order = await orderRepository.GetOrderByReservationIdAsync(group.ReservationId);
+        if (order is null || order.Status == OrderStatus.Cancelled)
+            throw new ValidationException($"Active pre-order for reservation '{group.ReservationId}' not found.");
+
+        // Atomic claim (Open -> Submitted): a concurrent or repeated submit cannot merge the dishes twice.
+        bool claimed = await groupReservationRepository.TryUpdateStatusAsync(
+            groupReservationId, GroupReservationStatus.Open, GroupReservationStatus.Submitted);
+        if (!claimed)
+            throw new GroupReservationSubmittedException();
+
+        MergeIntoOrder(order, consolidated);
+        order.Status = OrderStatus.SubmittedByCustomer;
+
+        try
+        {
+            await orderRepository.SaveOrderAsync(order);
+        }
+        catch
+        {
+            // Best effort: release the claim so the owner can retry.
+            try
+            {
+                await groupReservationRepository.TryUpdateStatusAsync(
+                    groupReservationId, GroupReservationStatus.Submitted, GroupReservationStatus.Open);
+            }
+            catch (Exception)
+            {
+                // Ignore: the original exception is more relevant.
+            }
+
+            throw;
+        }
+
+        return consolidated;
+    }
+
+    private static List<GroupPreOrderItemResponse> ConsolidateDishes(IEnumerable<GuestSession> sessions) =>
+        sessions
+            .SelectMany(s => s.Dishes ?? [])
+            .Where(d => d.Quantity > 0 && !string.IsNullOrWhiteSpace(d.DishId))
+            .GroupBy(d => d.DishId)
+            .Select(g => new GroupPreOrderItemResponse(g.Key, g.Sum(d => d.Quantity)))
+            .ToList();
+
+    private static void MergeIntoOrder(Order order, IEnumerable<GroupPreOrderItemResponse> items)
+    {
+        order.Dishes ??= [];
+
+        foreach (GroupPreOrderItemResponse item in items)
+        {
+            // Never add a second line for the same dish: waiter confirm/cancel look up the first line by DishId.
+            OrderItem? existing = order.Dishes.FirstOrDefault(d => d.DishId == item.DishId);
+            if (existing is not null)
+            {
+                // A cancelled line is revived with the new quantity; any other line gets the quantity added.
+                // A changed line must be re-confirmed by the waiter, so it goes back to Pending.
+                existing.Quantity = existing.State == OrderItemState.Canceled
+                    ? item.Quantity
+                    : existing.Quantity + item.Quantity;
+                existing.State = OrderItemState.Pending;
+                continue;
+            }
+
+            order.Dishes.Add(new OrderItem
+            {
+                DishId = item.DishId,
+                Quantity = item.Quantity,
+                State = OrderItemState.Pending,
+            });
+        }
     }
 }
 

@@ -16,5 +16,6 @@ public interface IGuestSessionService
     Task<GetAllSessionsResponse> DeleteGuestSessionAsync(string userId, string groupReservationId, string guestSessionId);
     Task<GetAllSessionsResponse> GetGroupSessionsAsync(string userId, string groupReservationId);
     Task<GetGuestSessionResponse> GetGuestSessionInfoAsync(string guestSessionId);
+    Task<GetOwnerSessionIdResponse> GetOrCreateOwnerSessionIdAsync(string userId, string reservationId);
 }
 

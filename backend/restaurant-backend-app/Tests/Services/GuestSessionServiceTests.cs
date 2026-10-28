@@ -1132,6 +1132,338 @@ public class GuestSessionServiceTests
             { dishMap.Keys, dishMap.Values, orderItems, expectedTotal }
         };
     }
+
+    [Theory]
+    [AutoData]
+    public async Task GetOrCreateOwnerSessionIdAsync_OwnerSessionExists_ReturnsItsIdWithoutSaving(
+        string userId,
+        Reservation reservation,
+        GroupReservation groupReservation,
+        GuestSession guestSession,
+        GuestSession ownerSession)
+    {
+        reservation.CustomerId = userId;
+        groupReservation.ReservationId = reservation.Id;
+        guestSession.IsOwnerSession = false;
+        ownerSession.IsOwnerSession = true;
+        ownerSession.Id = $"owner-{groupReservation.GroupReservationId}";
+
+        _mockReservationRepository.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+        _mockGroupReservationRepository.Setup(r => r.GetByReservationIdAsync(reservation.Id)).ReturnsAsync(groupReservation);
+        _mockGuestSessionRepository.Setup(r => r.GetByGuestSessionId(guestSession.Id)).ReturnsAsync(guestSession);
+        _mockGuestSessionRepository.Setup(r => r.GetByGuestSessionId(ownerSession.Id)).ReturnsAsync(ownerSession);
+
+        var response = await _guestSessionService.GetOrCreateOwnerSessionIdAsync(userId, reservation.Id);
+
+        Assert.Equal(ownerSession.Id, response.GuestSessionId);
+        _mockGuestSessionRepository.Verify(r => r.SaveAsync(It.IsAny<GuestSession>()), Times.Never);
+        _mockGuestSessionRepository.Verify(r => r.GetAllByGroupReservationIdAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetOrCreateOwnerSessionIdAsync_OwnerSessionMissing_CreatesOwnerSessionAndReturnsItsId(
+        string userId,
+        Reservation reservation,
+        GroupReservation groupReservation,
+        GuestSession guestSession)
+    {
+        reservation.CustomerId = userId;
+        groupReservation.ReservationId = reservation.Id;
+        guestSession.IsOwnerSession = false;
+
+        _mockReservationRepository.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+        _mockGroupReservationRepository.Setup(r => r.GetByReservationIdAsync(reservation.Id)).ReturnsAsync(groupReservation);
+        _mockGuestSessionRepository.Setup(r => r.GetByGuestSessionId(guestSession.Id)).ReturnsAsync(guestSession);
+        _mockGuestSessionRepository
+            .Setup(r => r.GetByGuestSessionId($"owner-{groupReservation.GroupReservationId}"))
+            .ReturnsAsync((GuestSession?)null);
+
+        GuestSession? saved = null;
+        _mockGuestSessionRepository
+            .Setup(r => r.SaveAsync(It.IsAny<GuestSession>()))
+            .Callback<GuestSession>(s => saved = s);
+
+        var response = await _guestSessionService.GetOrCreateOwnerSessionIdAsync(userId, reservation.Id);
+
+        _mockGuestSessionRepository.Verify(r => r.SaveAsync(It.IsAny<GuestSession>()), Times.Once);
+        Assert.NotNull(saved);
+        Assert.True(saved.IsOwnerSession);
+        Assert.Equal(userId, saved.OwnerUserId);
+        Assert.Equal(groupReservation.GroupReservationId, saved.GroupReservationId);
+        Assert.Equal("Owner", saved.GuestName);
+        Assert.Empty(saved.Dishes);
+        Assert.Equal($"owner-{groupReservation.GroupReservationId}", saved.Id);
+        Assert.Equal(saved.Id, response.GuestSessionId);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetOrCreateOwnerSessionIdAsync_CallerIsNotOwner_ThrowsActionForbiddenException(
+        string userId,
+        Reservation reservation)
+    {
+        _mockReservationRepository.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+
+        await Assert.ThrowsAsync<ActionForbiddenException>(() =>
+            _guestSessionService.GetOrCreateOwnerSessionIdAsync(userId, reservation.Id));
+
+        _mockGuestSessionRepository.Verify(r => r.SaveAsync(It.IsAny<GuestSession>()), Times.Never);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetOrCreateOwnerSessionIdAsync_ReservationNotFound_ThrowsReservationNotFoundException(
+        string userId,
+        string reservationId)
+    {
+        _mockReservationRepository.Setup(r => r.GetReservationByIdAsync(reservationId)).ReturnsAsync((Reservation?)null);
+
+        await Assert.ThrowsAsync<ReservationNotFoundException>(() =>
+            _guestSessionService.GetOrCreateOwnerSessionIdAsync(userId, reservationId));
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetOrCreateOwnerSessionIdAsync_GroupReservationNotFound_ThrowsGroupReservationNotFoundException(
+        string userId,
+        Reservation reservation)
+    {
+        reservation.CustomerId = userId;
+
+        _mockReservationRepository.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+        _mockGroupReservationRepository.Setup(r => r.GetByReservationIdAsync(reservation.Id)).ReturnsAsync((GroupReservation?)null);
+
+        await Assert.ThrowsAsync<GroupReservationNotFoundException>(() =>
+            _guestSessionService.GetOrCreateOwnerSessionIdAsync(userId, reservation.Id));
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetGroupReservationStatusAsync_OwnerSessionExists_OwnerCountedOnce(
+        GroupReservation groupReservation,
+        Reservation reservation,
+        GuestSession guestSession,
+        GuestSession ownerSession)
+    {
+        groupReservation.ReservationId = reservation.Id;
+        guestSession.IsOwnerSession = false;
+        ownerSession.IsOwnerSession = true;
+
+        _mockGroupReservationRepository
+            .Setup(r => r.GetGroupReservationByIdAsync(groupReservation.GroupReservationId))
+            .ReturnsAsync(groupReservation);
+        _mockReservationRepository.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+        _mockGuestSessionRepository
+            .Setup(r => r.GetAllByGroupReservationIdAsync(groupReservation.GroupReservationId))
+            .ReturnsAsync([guestSession, ownerSession]);
+
+        var response = await _guestSessionService.GetGroupReservationStatusAsync(groupReservation.GroupReservationId);
+
+        // 1 joined guest + 1 owner; the owner's session must not be counted on top of that.
+        Assert.Equal(2, response.CurrentParticipants);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetOrCreateOwnerSessionIdAsync_CallerIsNotOwner_DoesNotLookUpGroupOrSessions(
+        string userId,
+        Reservation reservation)
+    {
+        _mockReservationRepository.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+
+        await Assert.ThrowsAsync<ActionForbiddenException>(() =>
+            _guestSessionService.GetOrCreateOwnerSessionIdAsync(userId, reservation.Id));
+
+        _mockGroupReservationRepository.Verify(r => r.GetByReservationIdAsync(It.IsAny<string>()), Times.Never);
+        _mockGuestSessionRepository.Verify(r => r.GetAllByGroupReservationIdAsync(It.IsAny<string>()), Times.Never);
+        _mockGuestSessionRepository.Verify(r => r.GetByGuestSessionId(It.IsAny<string>()), Times.Never);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetOrCreateOwnerSessionIdAsync_GroupReservationNotFound_DoesNotCreateSession(
+        string userId,
+        Reservation reservation)
+    {
+        reservation.CustomerId = userId;
+        _mockReservationRepository.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+        _mockGroupReservationRepository.Setup(r => r.GetByReservationIdAsync(reservation.Id)).ReturnsAsync((GroupReservation?)null);
+
+        await Assert.ThrowsAsync<GroupReservationNotFoundException>(() =>
+            _guestSessionService.GetOrCreateOwnerSessionIdAsync(userId, reservation.Id));
+
+        _mockGuestSessionRepository.Verify(r => r.SaveAsync(It.IsAny<GuestSession>()), Times.Never);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetOrCreateOwnerSessionIdAsync_OwnerSessionNotFoundById_CreatesOwnerSessionWithoutQueryingGroupIndex(
+        string userId,
+        Reservation reservation,
+        GroupReservation groupReservation)
+    {
+        reservation.CustomerId = userId;
+        groupReservation.ReservationId = reservation.Id;
+
+        _mockReservationRepository.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+        _mockGroupReservationRepository.Setup(r => r.GetByReservationIdAsync(reservation.Id)).ReturnsAsync(groupReservation);
+        _mockGuestSessionRepository
+            .Setup(r => r.GetByGuestSessionId(It.IsAny<string>()))
+            .ReturnsAsync((GuestSession?)null);
+
+        GuestSession? saved = null;
+        _mockGuestSessionRepository
+            .Setup(r => r.SaveAsync(It.IsAny<GuestSession>()))
+            .Callback<GuestSession>(s => saved = s);
+
+        var response = await _guestSessionService.GetOrCreateOwnerSessionIdAsync(userId, reservation.Id);
+
+        Assert.NotNull(saved);
+        Assert.True(saved.IsOwnerSession);
+        Assert.False(saved.IsSubmitted);
+        Assert.Equal($"owner-{groupReservation.GroupReservationId}", saved.Id);
+        Assert.Equal(saved.Id, response.GuestSessionId);
+        _mockGuestSessionRepository.Verify(r => r.GetByGuestSessionId($"owner-{groupReservation.GroupReservationId}"), Times.Once);
+        _mockGuestSessionRepository.Verify(r => r.GetAllByGroupReservationIdAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetOrCreateOwnerSessionIdAsync_CalledTwice_ReturnsSameIdAndCreatesOnce(
+        string userId,
+        Reservation reservation,
+        GroupReservation groupReservation)
+    {
+        reservation.CustomerId = userId;
+        groupReservation.ReservationId = reservation.Id;
+        var stored = new Dictionary<string, GuestSession>();
+
+        _mockReservationRepository.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+        _mockGroupReservationRepository.Setup(r => r.GetByReservationIdAsync(reservation.Id)).ReturnsAsync(groupReservation);
+        _mockGuestSessionRepository
+            .Setup(r => r.GetByGuestSessionId(It.IsAny<string>()))
+            .ReturnsAsync((string id) => stored.GetValueOrDefault(id));
+        _mockGuestSessionRepository
+            .Setup(r => r.SaveAsync(It.IsAny<GuestSession>()))
+            .Callback<GuestSession>(session => stored[session.Id] = session);
+
+        var first = await _guestSessionService.GetOrCreateOwnerSessionIdAsync(userId, reservation.Id);
+        var second = await _guestSessionService.GetOrCreateOwnerSessionIdAsync(userId, reservation.Id);
+
+        Assert.Equal(first.GuestSessionId, second.GuestSessionId);
+        _mockGuestSessionRepository.Verify(r => r.SaveAsync(It.IsAny<GuestSession>()), Times.Once);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetGroupReservationStatusAsync_NoSessions_ReturnsOnlyOwner(GroupReservation groupReservation, Reservation reservation)
+    {
+        groupReservation.ReservationId = reservation.Id;
+
+        _mockGroupReservationRepository
+            .Setup(r => r.GetGroupReservationByIdAsync(groupReservation.GroupReservationId))
+            .ReturnsAsync(groupReservation);
+        _mockReservationRepository.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+        _mockGuestSessionRepository
+            .Setup(r => r.GetAllByGroupReservationIdAsync(groupReservation.GroupReservationId))
+            .ReturnsAsync((List<GuestSession>)null!);
+
+        var response = await _guestSessionService.GetGroupReservationStatusAsync(groupReservation.GroupReservationId);
+
+        Assert.Equal(1, response.CurrentParticipants);
+        Assert.Equal(reservation.GuestCount, response.MaxCapacity);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetGroupReservationStatusAsync_OnlyOwnerSession_ReturnsOne(
+        GroupReservation groupReservation,
+        Reservation reservation,
+        GuestSession ownerSession)
+    {
+        groupReservation.ReservationId = reservation.Id;
+        ownerSession.IsOwnerSession = true;
+
+        _mockGroupReservationRepository
+            .Setup(r => r.GetGroupReservationByIdAsync(groupReservation.GroupReservationId))
+            .ReturnsAsync(groupReservation);
+        _mockReservationRepository.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+        _mockGuestSessionRepository
+            .Setup(r => r.GetAllByGroupReservationIdAsync(groupReservation.GroupReservationId))
+            .ReturnsAsync([ownerSession]);
+
+        var response = await _guestSessionService.GetGroupReservationStatusAsync(groupReservation.GroupReservationId);
+
+        Assert.Equal(1, response.CurrentParticipants);
+    }
+
+    // CountByGroupReservationId excludes the owner session (see GuestSessionRepositoryTests), so with an existing
+    // owner session and GuestCount = 3, one joined guest (count = 1) still leaves room for one more guest.
+    [Theory]
+    [InlineAutoData(3, 0)]
+    [InlineAutoData(3, 1)]
+    [InlineAutoData(4, 2)]
+    public async Task CreateGuestSessionAsync_OwnerSessionExistsAndBelowLimit_CreatesSession(
+        int reservationCapacity,
+        int joinedGuestsExcludingOwner,
+        CreateGuestSessionRequest request,
+        GroupReservation groupReservation,
+        Reservation parentReservation)
+    {
+        groupReservation.GroupReservationId = request.GroupReservationId;
+        groupReservation.Status = GroupReservationStatus.Open;
+        groupReservation.ReservationId = parentReservation.Id;
+        parentReservation.GuestCount = reservationCapacity;
+        parentReservation.Status = APIHandler.Constants.ReservationStatus.Reserved;
+
+        _mockGroupReservationRepository
+            .Setup(r => r.GetGroupReservationByIdAsync(groupReservation.GroupReservationId))
+            .ReturnsAsync(groupReservation);
+        _mockReservationRepository
+            .Setup(r => r.GetReservationByIdAsync(parentReservation.Id))
+            .ReturnsAsync(parentReservation);
+        _mockGuestSessionRepository
+            .Setup(r => r.CountByGroupReservationId(groupReservation.GroupReservationId))
+            .ReturnsAsync(joinedGuestsExcludingOwner);
+
+        var response = await _guestSessionService.CreateGuestSessionAsync(request);
+
+        Assert.False(string.IsNullOrEmpty(response.SessionId));
+        _mockGuestSessionRepository.Verify(r => r.SaveAsync(It.Is<GuestSession>(s =>
+            !s.IsOwnerSession && s.GroupReservationId == groupReservation.GroupReservationId)), Times.Once);
+    }
+
+    [Theory]
+    [InlineAutoData(3, 2)]
+    [InlineAutoData(4, 3)]
+    public async Task CreateGuestSessionAsync_OwnerSessionExistsAndLimitReached_ThrowsGuestLimitExceededException(
+        int reservationCapacity,
+        int joinedGuestsExcludingOwner,
+        CreateGuestSessionRequest request,
+        GroupReservation groupReservation,
+        Reservation parentReservation)
+    {
+        groupReservation.GroupReservationId = request.GroupReservationId;
+        groupReservation.Status = GroupReservationStatus.Open;
+        groupReservation.ReservationId = parentReservation.Id;
+        parentReservation.GuestCount = reservationCapacity;
+        parentReservation.Status = APIHandler.Constants.ReservationStatus.Reserved;
+
+        _mockGroupReservationRepository
+            .Setup(r => r.GetGroupReservationByIdAsync(groupReservation.GroupReservationId))
+            .ReturnsAsync(groupReservation);
+        _mockReservationRepository
+            .Setup(r => r.GetReservationByIdAsync(parentReservation.Id))
+            .ReturnsAsync(parentReservation);
+        _mockGuestSessionRepository
+            .Setup(r => r.CountByGroupReservationId(groupReservation.GroupReservationId))
+            .ReturnsAsync(joinedGuestsExcludingOwner);
+
+        await Assert.ThrowsAsync<GuestLimitExceededException>(() => _guestSessionService.CreateGuestSessionAsync(request));
+
+        _mockGuestSessionRepository.Verify(r => r.SaveAsync(It.IsAny<GuestSession>()), Times.Never);
+    }
 }
 
 

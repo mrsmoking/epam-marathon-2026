@@ -258,9 +258,9 @@ public class GuestSessionService(
     {
         var sessions = await guestSessionRepository.GetAllByGroupReservationIdAsync(groupReservationId);
 
-        // Owner is always 1 active participant. 
+        // Owner is always 1 active participant; the owner's own session is excluded so it is not counted twice.
         // If sessions is null/empty, it safely evaluates to 0 joined guests + 1 owner = 1.
-        return (sessions?.Count ?? 0) + 1;
+        return (sessions?.Count(s => !s.IsOwnerSession) ?? 0) + 1;
     }
 
     private async Task ValidateGroupReservationId(string groupReservationId) => await GetGroupReservationAndValidateAsync(groupReservationId);
@@ -328,11 +328,34 @@ public class GuestSessionService(
         }
     }
 
-    public async Task CreateGroupOwnerSessionAsync(string userId, string groupReservationId)
+    public async Task<GetOwnerSessionIdResponse> GetOrCreateOwnerSessionIdAsync(string userId, string reservationId)
+    {
+        var reservation = await reservationRepository.GetReservationByIdAsync(reservationId)
+            ?? throw new ReservationNotFoundException($"Reservation with id {reservationId} not found.");
+
+        if (reservation.CustomerId != userId)
+        {
+            throw new ActionForbiddenException("Only the reservation owner can perform this action.");
+        }
+
+        var group = await groupReservationRepository.GetByReservationIdAsync(reservationId)
+            ?? throw new GroupReservationNotFoundException();
+
+        // Deterministic id + strongly consistent load by primary key: no GSI lag, no duplicate owner sessions.
+        string ownerSessionId = GetOwnerSessionId(group.GroupReservationId);
+        var ownerSession = await guestSessionRepository.GetByGuestSessionId(ownerSessionId)
+            ?? await CreateGroupOwnerSessionAsync(ownerSessionId, userId, group.GroupReservationId);
+
+        return new GetOwnerSessionIdResponse(ownerSession.Id);
+    }
+
+    private static string GetOwnerSessionId(string groupReservationId) => $"owner-{groupReservationId}";
+
+    private async Task<GuestSession> CreateGroupOwnerSessionAsync(string ownerSessionId, string userId, string groupReservationId)
     {
         var session = new GuestSession()
         {
-            Id = Guid.NewGuid().ToString(),
+            Id = ownerSessionId,
             GroupReservationId = groupReservationId,
             GuestName = "Owner",
             Dishes = [],
@@ -341,6 +364,8 @@ public class GuestSessionService(
         };
 
         await guestSessionRepository.SaveAsync(session);
+
+        return session;
     }
 
     public async Task<GetGuestSessionResponse> GetGuestSessionInfoAsync(string guestSessionId)

@@ -555,12 +555,22 @@ Response: `200 OK`
 ```
 
 ### `GET` /reservations/{reservationId}/guest-session-id
+Authorization: Cognito (`cognito_authorizer`). Only the owner of the reservation (`sub` == `reservation.customerId`) can call it.
+
+Returns the id of the reservation owner's own session in the group pre-order (`isOwnerSession: true`). Get-or-create: the owner session has a deterministic id `owner-{groupReservationId}` and is looked up by primary key (strongly consistent read); if it does not exist yet, it is created on the first call (name `"Owner"`, empty cart); subsequent calls return the same id. The owner session is not counted toward the guest limit.
+
 Response: `200 OK`
 ```json
 {
   "guestSessionId": "string"
 }
 ```
+
+Errors:
+- `400 Bad Request` - missing `reservationId` path parameter.
+- `401 Unauthorized` - no authorizer claims / no `sub` claim.
+- `403 Forbidden` - the caller is not the owner of the reservation.
+- `404 Not Found` - reservation not found, or the reservation has no group reservation (e.g. `guestCount` < 2).
 
 
 ### `DELETE` /reservations
@@ -1180,12 +1190,52 @@ Response: 200 OK
 ```
 
 ### `POST` /group-reservations/{groupReservationId}/submit
-Response: 200 OK
+Authorization: Cognito (`cognito_authorizer`). Only the owner of the parent reservation (`sub` == `reservation.customerId`) can submit the group pre-order.
+
+Consolidates the group pre-order: takes only submitted guest sessions (the owner's session included, if submitted), groups their dishes by `dishId` summing quantities (items with quantity <= 0 or an empty `dishId` are ignored) and merges the result into the existing pre-order of the reservation. The response contains only the consolidated list from the guest sessions (in order of first appearance), not the whole order.
+
+Merge rules (an order never gets a second line for the same `dishId`):
+- no line for the dish yet - a new line is added with state `Pending`;
+- existing `Pending` line - quantities are summed, the line stays `Pending`;
+- existing `Confirmed` (any non-`Pending`, non-`Canceled`) line - quantities are summed and the line goes back to `Pending` (the waiter has to re-confirm it);
+- existing `Canceled` line - the line is revived: `quantity` is set to the consolidated quantity and the state becomes `Pending`.
+
+Processing order: all validations are done first; then the group reservation is claimed atomically (conditional update `status: Open -> Submitted`), so a repeated or concurrent submit returns `GroupReservationSubmitted` and never adds the quantities twice; then the order is saved with status `SubmittedByCustomer`. If saving the order fails, the group reservation is returned to `Open` (best effort) and the request fails, so the owner can retry.
+
+Request body:
 ```json
 {
-  "message": "Group reservation pre-order submitted successfully."
+  "reservationId": "string"
 }
 ```
+
+Response: `200 OK`
+```json
+[
+  {
+    "dishId": "dish1",
+    "quantity": 3
+  },
+  {
+    "dishId": "dish2",
+    "quantity": 2
+  }
+]
+```
+
+Errors come in two shapes:
+- business validation errors from the service: `{ "message": "...", "errorCode": "GroupReservationSubmitted" }` (`errorCode` is a string);
+- everything else (path/body validation, 401, 403, 404): `{ "error": "..." }`.
+
+- `400 Bad Request` (`{ "error" }`) - missing `groupReservationId` path parameter, invalid body or missing `reservationId`.
+- `400 Bad Request` (`errorCode: "Unknown"`) - `reservationId` does not match the group reservation.
+- `400 Bad Request` (`errorCode: "GroupReservationSubmitted"`) - the group reservation is already submitted (including a repeated or concurrent submit).
+- `400 Bad Request` (`errorCode: "GroupReservationExpired"`) - the group reservation is closed.
+- `400 Bad Request` (`errorCode: "Unknown"`) - no submitted guest sessions, or submitted sessions contain no dishes.
+- `400 Bad Request` (`errorCode: "Unknown"`) - no active pre-order for the reservation (missing or cancelled).
+- `401 Unauthorized` (`{ "error" }`) - no Cognito claims / `sub`.
+- `403 Forbidden` (`{ "error" }`) - the caller is not the reservation owner.
+- `404 Not Found` (`{ "error" }`) - group reservation or its parent reservation not found.
 
 ### `GET` /guest/groups/{groupReservationId}/sessions
 Authorization: Cognito (`cognito_authorizer`). Only the owner of the parent reservation (`sub` == `reservation.customerId`) can view the group's sessions.

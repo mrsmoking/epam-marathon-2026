@@ -1,7 +1,11 @@
-﻿using Amazon.DynamoDBv2.DataModel;
+﻿using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.DataModel;
+using Amazon.DynamoDBv2.Model;
 using APIHandler.Constants;
 using APIHandler.Entities;
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -11,10 +15,12 @@ public class GroupReservationRepository : IGroupReservationRepository
 {
     private static readonly string GroupReservationsTableName = ResourceNames.GroupReservationsTableName;
     private readonly IDynamoDBContext _dynamoDbContext;
+    private readonly IAmazonDynamoDB _dynamoDbClient;
 
-    public GroupReservationRepository(IDynamoDBContext dynamoDbContext)
+    public GroupReservationRepository(IDynamoDBContext dynamoDbContext, IAmazonDynamoDB dynamoDbClient)
     {
         _dynamoDbContext = dynamoDbContext ?? throw new ArgumentNullException(nameof(dynamoDbContext));
+        _dynamoDbClient = dynamoDbClient ?? throw new ArgumentNullException(nameof(dynamoDbClient));
     }
 
     public async Task<GroupReservation?> GetGroupReservationByIdAsync(string groupReservationId)
@@ -53,4 +59,41 @@ public class GroupReservationRepository : IGroupReservationRepository
 
         return results.FirstOrDefault();
     }
+
+    public async Task<bool> TryUpdateStatusAsync(string groupReservationId, GroupReservationStatus expectedStatus, GroupReservationStatus newStatus)
+    {
+        // DynamoDBContext stores the enum without a converter as a number (N) with its underlying int value.
+        var request = new UpdateItemRequest
+        {
+            TableName = GroupReservationsTableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                ["groupReservationId"] = new AttributeValue { S = groupReservationId },
+            },
+            UpdateExpression = "SET #status = :newStatus",
+            ConditionExpression = "#status = :expectedStatus",
+            ExpressionAttributeNames = new Dictionary<string, string>
+            {
+                ["#status"] = "status",
+            },
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":newStatus"] = ToNumber(newStatus),
+                [":expectedStatus"] = ToNumber(expectedStatus),
+            },
+        };
+
+        try
+        {
+            await _dynamoDbClient.UpdateItemAsync(request);
+            return true;
+        }
+        catch (ConditionalCheckFailedException)
+        {
+            return false;
+        }
+    }
+
+    private static AttributeValue ToNumber(GroupReservationStatus status) =>
+        new() { N = ((int)status).ToString(CultureInfo.InvariantCulture) };
 }
