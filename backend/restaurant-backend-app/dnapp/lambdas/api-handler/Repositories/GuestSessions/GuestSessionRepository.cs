@@ -1,4 +1,6 @@
+using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.DataModel;
+using Amazon.DynamoDBv2.Model;
 using APIHandler.Constants;
 using APIHandler.Entities;
 using System.Collections.Generic;
@@ -7,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace APIHandler.Repositories.GuestSessions;
 
-public class GuestSessionRepository(IDynamoDBContext context) : IGuestSessionRepository
+public class GuestSessionRepository(IDynamoDBContext context, IAmazonDynamoDB dynamoDbClient) : IGuestSessionRepository
 {
     public async Task<GuestSession?> GetByGuestSessionId(string id) => await context.LoadAsync<GuestSession?>(id, new LoadConfig()
     {
@@ -50,6 +52,37 @@ public class GuestSessionRepository(IDynamoDBContext context) : IGuestSessionRep
     {
         OverrideTableName = ResourceNames.GuestSessionTableName
     });
+
+    public async Task<bool> TryUpdateExistingAsync(GuestSession guestSession)
+    {
+        // Serialised by DynamoDBContext, so attribute names, converters and the conversion schema match SaveAsync.
+        var item = context.ToDocument(guestSession, new ToDocumentConfig
+        {
+            OverrideTableName = ResourceNames.GuestSessionTableName
+        }).ToAttributeMap();
+
+        // Unlike SaveAsync (an upsert), this never recreates a session that was deleted in the meantime.
+        var request = new PutItemRequest
+        {
+            TableName = ResourceNames.GuestSessionTableName,
+            Item = item,
+            ConditionExpression = "attribute_exists(#id)",
+            ExpressionAttributeNames = new Dictionary<string, string>
+            {
+                ["#id"] = "guestSessionId",
+            },
+        };
+
+        try
+        {
+            await dynamoDbClient.PutItemAsync(request);
+            return true;
+        }
+        catch (ConditionalCheckFailedException)
+        {
+            return false;
+        }
+    }
 
     public async Task<int> CountByGroupReservationId(string groupReservationId)
     {

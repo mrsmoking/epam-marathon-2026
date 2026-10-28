@@ -1135,6 +1135,8 @@ Response: 200 OK
 }
 ```
 
+A session deleted by the group owner (`DELETE /guest/groups/{groupReservationId}/sessions/{guestSessionId}`) is never recreated by this request: if it is deleted while the request is in progress, the response is `404 Not Found` (`{ "error": "..." }`).
+
 ### `DELETE` /guest-sessions/{guestSessionId}/dishes
 Request body:
 ```json
@@ -1148,6 +1150,8 @@ Response: 200 OK
   "message": "Dish removed from guest session successfully."
 }
 ```
+
+A session deleted by the group owner (`DELETE /guest/groups/{groupReservationId}/sessions/{guestSessionId}`) is never recreated by this request: if it is deleted while the request is in progress, the response is `404 Not Found` (`{ "error": "..." }`).
 
 ### `GET` /guest/sessions/{guestSessionId}/menu
 Response: 200 OK
@@ -1178,6 +1182,8 @@ Response: 200 OK
   "message": "Guest cart submitted successfully."
 }
 ```
+
+A session deleted by the group owner (`DELETE /guest/groups/{groupReservationId}/sessions/{guestSessionId}`) is never recreated by this request: if it is deleted while the request is in progress, the response is `404 Not Found` (`{ "error": "..." }`).
 
 ### `GET` /group-reservations/{groupReservationId}/status
 Response: 200 OK
@@ -1287,6 +1293,10 @@ Errors:
 ### `DELETE` /guest/groups/{groupReservationId}/sessions/{guestSessionId}
 Authorization: Cognito (`cognito_authorizer`). Only the owner of the parent reservation can remove a guest session.
 
+Removes a guest from the group pre-order (the guest's cart is deleted together with the session). Allowed only while the group reservation is `Open`: after a group submit the dishes are already merged into the order. A guest whose cart is already submitted (`isSubmitted: true`) can still be removed while the group is `Open`. The owner's own session (`type: "Owner"`, id `owner-{groupReservationId}`) cannot be removed.
+
+Checks are done in this order, and nothing is deleted if any of them fails: group reservation exists (404) -> parent reservation exists (404) -> caller is the owner (403) -> group status is `Open` (400) -> guest session exists (404) -> session belongs to this group (400) -> session is not the owner's session (400).
+
 Response: `200 OK` - the updated group snapshot, same shape as `GET /guest/groups/{groupReservationId}/sessions`:
 ```json
 {
@@ -1304,8 +1314,15 @@ Response: `200 OK` - the updated group snapshot, same shape as `GET /guest/group
 }
 ```
 
-Errors:
-- `400 Bad Request` - missing path parameter, or the guest session does not belong to this group reservation.
-- `401 Unauthorized` - no authorizer claims / no `sub` claim.
-- `403 Forbidden` - the caller is not the owner of the parent reservation.
-- `404 Not Found` - group reservation, parent reservation or guest session not found.
+Errors come in two shapes:
+- business validation errors from the service: `{ "message": "...", "errorCode": "GroupReservationSubmitted" }` (`errorCode` is a string);
+- everything else (path validation, 401, 403, 404): `{ "error": "..." }`.
+
+- `400 Bad Request` (`{ "error" }`) - missing `groupReservationId` or `guestSessionId` path parameter.
+- `400 Bad Request` (`errorCode: "GroupReservationSubmitted"`) - the group reservation is already submitted.
+- `400 Bad Request` (`errorCode: "GroupReservationExpired"`) - the group reservation is closed.
+- `400 Bad Request` (`errorCode: "Unknown"`) - the guest session does not belong to this group reservation.
+- `400 Bad Request` (`errorCode: "Unknown"`) - the session is the owner's session.
+- `401 Unauthorized` (`{ "error" }`) - no authorizer claims / no `sub` claim.
+- `403 Forbidden` (`{ "error" }`) - the caller is not the owner of the parent reservation.
+- `404 Not Found` (`{ "error" }`) - group reservation, parent reservation or guest session not found.

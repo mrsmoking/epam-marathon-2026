@@ -553,19 +553,30 @@ paths:
                 type: object
                 description: Updated snapshot of the group reservation
         '400':
-          description: Invalid request - missing required path parameters
+          description: |-
+            Bad request. Missing path parameter -> `{ "error": "..." }`. Business validation errors -> `{ "message": "...", "errorCode": "<string>" }`:
+            - `errorCode: "GroupReservationSubmitted"` - the group reservation is already submitted.
+            - `errorCode: "GroupReservationExpired"` - the group reservation is closed.
+            - `errorCode: "Unknown"` - the guest session does not belong to this group reservation.
+            - `errorCode: "Unknown"` - the session is the owner's session (it cannot be deleted).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
-          description: Unauthorized
+          description: Unauthorized - no authorizer claims / no `sub` claim
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - the caller is not the owner of the parent reservation
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Group reservation or guest session not found
+          description: Group reservation, parent reservation or guest session not found
           content:
             application/json:
               schema:
@@ -745,6 +756,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Guest session not found (including a session deleted by the group owner while the request was in progress)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Group reservation expired or already submitted
           content:
@@ -793,6 +810,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Guest session not found (including a session deleted by the group owner while the request was in progress)
           content:
             application/json:
               schema:
@@ -882,7 +905,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: GroupId is required
+          description: Missing guestSessionId in path, or the guest session was not found (including a session deleted by
+            the group owner while the request was in progress)
           content:
             application/json:
               schema:

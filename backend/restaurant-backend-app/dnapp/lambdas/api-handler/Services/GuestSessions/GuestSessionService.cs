@@ -127,7 +127,7 @@ public class GuestSessionService(
             });
         }
 
-        await guestSessionRepository.SaveAsync(session);
+        await UpdateExistingSessionAsync(session);
     }
 
     public async Task RemoveDishAsync(string guestSessionId, string dishId, int quantity)
@@ -150,7 +150,7 @@ public class GuestSessionService(
             session.Dishes.Remove(existingDish);
         }
 
-        await guestSessionRepository.SaveAsync(session);
+        await UpdateExistingSessionAsync(session);
     }
 
     public async Task<GroupReservationStatusResponse> GetGroupReservationStatusAsync(string groupReservationId)
@@ -174,7 +174,10 @@ public class GuestSessionService(
     
     public async Task<GetAllSessionsResponse> DeleteGuestSessionAsync(string userId, string groupReservationId, string guestSessionId)
     {
-        await ValidateReservationOwnerAsync(groupReservationId, userId);
+        GroupReservation group = await ValidateReservationOwnerAsync(groupReservationId, userId);
+
+        // After a group submit the dishes are already merged into the order, so participants can only be removed while the group is Open.
+        ValidateGroupReservation(group);
 
         var session = await guestSessionRepository.GetByGuestSessionId(guestSessionId)
             ?? throw new GuestSessionNotFoundException($"Guest session with id {guestSessionId} not found.");
@@ -182,6 +185,11 @@ public class GuestSessionService(
         if (session.GroupReservationId != groupReservationId)
         {
             throw new ValidationException("Guest session does not belong to this group reservation.");
+        }
+
+        if (session.IsOwnerSession)
+        {
+            throw new ValidationException("The owner's session cannot be deleted.");
         }
 
         await guestSessionRepository.DeleteAsync(session);
@@ -244,7 +252,13 @@ public class GuestSessionService(
         await ValidateDishesAsync(guestSession.Dishes);
 
         guestSession.IsSubmitted = true;
-        await guestSessionRepository.SaveAsync(guestSession);
+        await UpdateExistingSessionAsync(guestSession);
+    }
+
+    private async Task UpdateExistingSessionAsync(GuestSession session)
+    {
+        if (!await guestSessionRepository.TryUpdateExistingAsync(session))
+            throw new GuestSessionNotFoundException($"Guest session {session.Id} not found.");
     }
 
     private async Task<GroupReservation> GetGroupReservationAndValidateAsync(string groupReservationId)
@@ -314,7 +328,7 @@ public class GuestSessionService(
     }
 
     
-    private async Task ValidateReservationOwnerAsync(string groupReservationId, string userId)
+    private async Task<GroupReservation> ValidateReservationOwnerAsync(string groupReservationId, string userId)
     {
         var group = await groupReservationRepository.GetGroupReservationByIdAsync(groupReservationId)
             ?? throw new GroupReservationNotFoundException();
@@ -326,6 +340,8 @@ public class GuestSessionService(
         {
             throw new ActionForbiddenException("Only the reservation owner can perform this action.");
         }
+
+        return group;
     }
 
     public async Task<GetOwnerSessionIdResponse> GetOrCreateOwnerSessionIdAsync(string userId, string reservationId)

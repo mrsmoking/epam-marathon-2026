@@ -18,5 +18,10 @@ public interface IGuestSessionRepository
 
     Task SaveAsync(GuestSession guestSession);
 
+    /// <summary>
+    /// Overwrites an existing session; returns false if the session no longer exists (e.g. it was deleted).
+    /// </summary>
+    Task<bool> TryUpdateExistingAsync(GuestSession guestSession);
+
     Task DeleteAsync(GuestSession session);
 }

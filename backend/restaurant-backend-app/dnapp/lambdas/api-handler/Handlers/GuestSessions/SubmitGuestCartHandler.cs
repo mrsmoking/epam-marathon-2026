@@ -36,6 +36,10 @@ public class SubmitGuestCartHandler(IGuestSessionService service, IGuestAuthoriz
         {
             return ResponseBuilder.CreateErrorResponse(409, exception.Message, context.Logger);
         }
+        catch (GuestSessionNotFoundException exception)
+        {
+            return ResponseBuilder.CreateErrorResponse(404, exception.Message, context.Logger);
+        }
         catch(ValidationException exception)
         {
             return ResponseBuilder.CreateErrorCodeResponse(exception);

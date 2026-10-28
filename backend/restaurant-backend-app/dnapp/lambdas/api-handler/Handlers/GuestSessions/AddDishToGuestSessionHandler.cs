@@ -55,6 +55,10 @@ public class AddDishToGuestSessionHandler : IApiRequestHandler
         {
             return ResponseBuilder.CreateErrorResponse(409, exception.Message, context.Logger);
         }
+        catch (GuestSessionNotFoundException exception)
+        {
+            return ResponseBuilder.CreateErrorResponse(404, exception.Message, context.Logger);
+        }
         catch (ValidationException ex)
         {
             return ResponseBuilder.CreateErrorCodeResponse(ex);
