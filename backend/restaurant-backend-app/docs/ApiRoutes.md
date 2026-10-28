@@ -1188,22 +1188,74 @@ Response: 200 OK
 ```
 
 ### `GET` /guest/groups/{groupReservationId}/sessions
-Response: 200 OK
-```json
-[
-  {
-    "id": "string",
-    "groupReservationId": "string",
-    "guestName": "string",
-    "status": "string"
-  }
-]
-```
+Authorization: Cognito (`cognito_authorizer`). Only the owner of the parent reservation (`sub` == `reservation.customerId`) can view the group's sessions.
 
-### `DELETE` /guest/groups/{groupReservationId}/sessions/{guestSessionId}
-Response: 200 OK
+Returns all participant sessions of the group pre-order with their dishes, a total per participant and a grand total. The owner's session has `type: "Owner"`, all others `type: "Guest"`. Order items whose dish no longer exists are skipped.
+
+Response: `200 OK`
 ```json
 {
-  "message": "Guest session removed from group successfully."
+  "participants": [
+    {
+      "id": "string",
+      "type": "Guest",
+      "name": "string",
+      "items": [
+        {
+          "dish": {
+            "id": "string",
+            "name": "string",
+            "description": "string",
+            "dishType": "string",
+            "price": 180,
+            "weight": "string",
+            "calories": "string",
+            "proteins": "string",
+            "fats": "string",
+            "carbohydrates": "string",
+            "vitamins": "string",
+            "imageUrl": "string",
+            "state": "string"
+          },
+          "quantity": 2
+        }
+      ],
+      "total": 360,
+      "isSubmitted": true
+    }
+  ],
+  "total": 360
 }
 ```
+
+Errors:
+- `400 Bad Request` - missing `groupReservationId` path parameter.
+- `401 Unauthorized` - no authorizer claims / no `sub` claim.
+- `403 Forbidden` - the caller is not the owner of the parent reservation.
+- `404 Not Found` - group reservation or parent reservation not found.
+
+### `DELETE` /guest/groups/{groupReservationId}/sessions/{guestSessionId}
+Authorization: Cognito (`cognito_authorizer`). Only the owner of the parent reservation can remove a guest session.
+
+Response: `200 OK` - the updated group snapshot, same shape as `GET /guest/groups/{groupReservationId}/sessions`:
+```json
+{
+  "participants": [
+    {
+      "id": "string",
+      "type": "Owner",
+      "name": "string",
+      "items": [],
+      "total": 0,
+      "isSubmitted": false
+    }
+  ],
+  "total": 0
+}
+```
+
+Errors:
+- `400 Bad Request` - missing path parameter, or the guest session does not belong to this group reservation.
+- `401 Unauthorized` - no authorizer claims / no `sub` claim.
+- `403 Forbidden` - the caller is not the owner of the parent reservation.
+- `404 Not Found` - group reservation, parent reservation or guest session not found.

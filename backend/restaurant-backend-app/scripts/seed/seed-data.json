@@ -1,0 +1,190 @@
+{
+  "locations": [
+    {
+      "key": "rustaveli",
+      "address": "48 Rustaveli Avenue, Tbilisi",
+      "description": "Flagship restaurant on the main avenue with a large hall and a summer terrace.",
+      "totalCapacity": 60,
+      "averageOccupancy": "75",
+      "rating": 4.8,
+      "image": "locations/rustaveli-avenue-48.jpg",
+      "tables": [
+        { "tableNumber": 1, "capacity": 2 },
+        { "tableNumber": 2, "capacity": 2 },
+        { "tableNumber": 3, "capacity": 4 },
+        { "tableNumber": 4, "capacity": 4 },
+        { "tableNumber": 5, "capacity": 6 },
+        { "tableNumber": 6, "capacity": 10 }
+      ]
+    },
+    {
+      "key": "baratashvili",
+      "address": "14 Baratashvili Street, Tbilisi",
+      "description": "Cozy place in the old town, popular for family dinners.",
+      "totalCapacity": 40,
+      "averageOccupancy": "60",
+      "rating": 4.6,
+      "image": "locations/baratashvili-street-14.jpg",
+      "tables": [
+        { "tableNumber": 1, "capacity": 2 },
+        { "tableNumber": 2, "capacity": 4 },
+        { "tableNumber": 3, "capacity": 4 },
+        { "tableNumber": 4, "capacity": 8 }
+      ]
+    },
+    {
+      "key": "abashidze",
+      "address": "9 Abashidze Street, Tbilisi",
+      "description": "Small bistro in Vake with a seasonal menu and quick lunches.",
+      "totalCapacity": 24,
+      "averageOccupancy": "45",
+      "rating": 4.4,
+      "image": "locations/abashidze-street-9.jpg",
+      "tables": [
+        { "tableNumber": 1, "capacity": 2 },
+        { "tableNumber": 2, "capacity": 2 },
+        { "tableNumber": 3, "capacity": 4 }
+      ]
+    }
+  ],
+  "dishes": [
+    {
+      "name": "Spring Salad",
+      "description": "Young leaves, radish, cucumber and fresh herbs with a lemon dressing.",
+      "dishType": "Appetizer",
+      "price": 12.5,
+      "weight": "250 g",
+      "calories": "180 kcal",
+      "proteins": "5 g",
+      "fats": "9 g",
+      "carbohydrates": "18 g",
+      "vitamins": "A, C, K",
+      "state": "Available",
+      "image": "dishes/spring-salad.jpg",
+      "locations": ["rustaveli", "baratashvili", "abashidze"]
+    },
+    {
+      "name": "Fresh Strawberry Mint Salad",
+      "description": "Strawberries, spinach, mint and toasted almonds with balsamic glaze.",
+      "dishType": "Appetizer",
+      "price": 14,
+      "weight": "220 g",
+      "calories": "210 kcal",
+      "proteins": "6 g",
+      "fats": "11 g",
+      "carbohydrates": "22 g",
+      "vitamins": "C, E, K",
+      "state": "Available",
+      "image": "dishes/fresh-strawberry-mint-salad.jpg",
+      "locations": ["rustaveli", "abashidze"]
+    },
+    {
+      "name": "Avocado Pine Nut Bowl",
+      "description": "Avocado, quinoa, cherry tomatoes and pine nuts with a tahini sauce.",
+      "dishType": "MainCourse",
+      "price": 18.5,
+      "weight": "350 g",
+      "calories": "520 kcal",
+      "proteins": "14 g",
+      "fats": "32 g",
+      "carbohydrates": "44 g",
+      "vitamins": "B6, C, E, K",
+      "state": "Available",
+      "image": "dishes/avocado-pine-nut-bowl.jpg",
+      "locations": ["rustaveli", "baratashvili"]
+    },
+    {
+      "name": "Roasted Sweet Potato and Lentil Salad",
+      "description": "Roasted sweet potato, green lentils, feta and arugula.",
+      "dishType": "MainCourse",
+      "price": 16,
+      "weight": "320 g",
+      "calories": "450 kcal",
+      "proteins": "18 g",
+      "fats": "14 g",
+      "carbohydrates": "58 g",
+      "vitamins": "A, B1, C",
+      "state": "Available",
+      "image": "dishes/roasted-sweet-potato-and-lentil-salad.jpg",
+      "locations": ["baratashvili", "abashidze"]
+    },
+    {
+      "name": "Mushroom Khachapuri",
+      "description": "Georgian cheese bread with forest mushrooms and herbs.",
+      "dishType": "MainCourse",
+      "price": 15,
+      "weight": "400 g",
+      "calories": "780 kcal",
+      "proteins": "28 g",
+      "fats": "36 g",
+      "carbohydrates": "82 g",
+      "vitamins": "B2, B12, D",
+      "state": "Available",
+      "locations": ["rustaveli", "baratashvili", "abashidze"]
+    },
+    {
+      "name": "Vegetable Pkhali Trio",
+      "description": "Spinach, beetroot and leek pkhali with walnuts and pomegranate.",
+      "dishType": "Appetizer",
+      "price": 11,
+      "weight": "200 g",
+      "calories": "260 kcal",
+      "proteins": "8 g",
+      "fats": "19 g",
+      "carbohydrates": "14 g",
+      "vitamins": "A, C, Folate",
+      "state": "Available",
+      "locations": ["rustaveli", "baratashvili"]
+    },
+    {
+      "name": "Churchkhela Cheesecake",
+      "description": "Light cheesecake with grape churchkhela and walnut crumble.",
+      "dishType": "Dessert",
+      "price": 9.5,
+      "weight": "150 g",
+      "calories": "390 kcal",
+      "proteins": "7 g",
+      "fats": "22 g",
+      "carbohydrates": "40 g",
+      "vitamins": "A, B2",
+      "state": "Available",
+      "locations": ["rustaveli", "abashidze"]
+    },
+    {
+      "name": "Pelamushi with Berries",
+      "description": "Traditional grape pudding served with seasonal berries.",
+      "dishType": "Dessert",
+      "price": 8,
+      "weight": "180 g",
+      "calories": "240 kcal",
+      "proteins": "3 g",
+      "fats": "4 g",
+      "carbohydrates": "48 g",
+      "vitamins": "C, K",
+      "state": "OnStop",
+      "locations": ["baratashvili"]
+    }
+  ],
+  "users": [
+    {
+      "firstName": "Anna",
+      "lastName": "Customer",
+      "email": "customer1@example.com",
+      "password": "Seed@Pass123"
+    },
+    {
+      "firstName": "Mario",
+      "lastName": "Waiter",
+      "email": "waiter.rustaveli@example.com",
+      "password": "Seed@Pass123",
+      "waiterAt": "rustaveli"
+    },
+    {
+      "firstName": "Nino",
+      "lastName": "Waiter",
+      "email": "waiter.baratashvili@example.com",
+      "password": "Seed@Pass123",
+      "waiterAt": "baratashvili"
+    }
+  ]
+}
