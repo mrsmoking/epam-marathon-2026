@@ -1085,6 +1085,8 @@ Response: `200 OK`
 ## Group & Guest Reservations
 
 ### `GET` /guest/invites/{token}
+Public (no authorizer). Read-only: a full group is still readable (the owner's group-order page reads it too); the guest limit is enforced on join (`POST /guest/sessions` -> `400 GuestLimitExceeded`). `404` - unknown token; `400 GroupReservationExpired` - the group is not `Open`.
+
 Response: `200 OK`
 ```json
 {

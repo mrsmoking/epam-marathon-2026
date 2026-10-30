@@ -62,10 +62,6 @@ public class GroupReservationServiceTests
             .Setup(r => r.GetReservationByIdAsync(reservation.Id))
             .ReturnsAsync(reservation);
 
-        _guestSessionRepositoryMock
-            .Setup(r => r.CountByGroupReservationId(groupReservation.GroupReservationId))
-            .ReturnsAsync(0);
-
         _tableRepositoryMock
             .Setup(r => r.GetTableAsync(table.Id))
             .ReturnsAsync(table);
@@ -120,10 +116,17 @@ public class GroupReservationServiceTests
 
     [Theory]
     [AutoData]
-    public async Task GetGroupReservationByTokenAsync_WhenGuestCountIsMax_ThrowsGuestLimitExceeded(GroupReservation groupReservation, Reservation reservation)
+    public async Task GetGroupReservationByTokenAsync_WhenGroupIsFull_StillReturnsInvite(
+        GroupReservation groupReservation,
+        Table table,
+        Reservation reservation,
+        Location location)
     {
-        groupReservation.Status = GroupReservationStatus.Open;
+        // the owner's group-order page reads the invite too; the limit is enforced on join (POST /guest/sessions)
         groupReservation.ReservationId = reservation.Id;
+        groupReservation.Status = GroupReservationStatus.Open;
+        reservation.TableId = table.Id;
+        table.LocationId = location.Id;
 
         _groupReservationRepositoryMock
             .Setup(r => r.GetGroupReservationByTokenAsync(groupReservation.ReservationToken))
@@ -137,7 +140,18 @@ public class GroupReservationServiceTests
             .Setup(r => r.CountByGroupReservationId(groupReservation.GroupReservationId))
             .ReturnsAsync(reservation.GuestCount);
 
-        await Assert.ThrowsAsync<GuestLimitExceededException>(() => _service.GetGroupReservationByTokenAsync(groupReservation.ReservationToken));
+        _tableRepositoryMock
+            .Setup(r => r.GetTableAsync(table.Id))
+            .ReturnsAsync(table);
+
+        _locationServiceMock
+            .Setup(s => s.GetLocationByIdAsync(table.LocationId))
+            .ReturnsAsync(location);
+
+        var result = await _service.GetGroupReservationByTokenAsync(groupReservation.ReservationToken);
+
+        Assert.Equal(groupReservation.GroupReservationId, result.GroupReservationId);
+        Assert.Equal(reservation.GuestCount, result.MaxGuestCount);
     }
 
     [Theory]
