@@ -1,35 +1,132 @@
 <main class="page">
   <header class="page-header">
-    <h1 class="page-title">Group Pre-Order</h1>
+    <div class="title-row">
+      <h1 class="page-title">Group Pre-Order</h1>
+      @if (loadState() === 'ready') {
+        <span class="status-badge" [attr.data-status]="status()">{{ statusLabel() }}</span>
+      }
+    </div>
 
-    <ul class="meta" aria-label="Reservation details">
-      <li class="meta-item">
-        <img src="assets/svg/location-green.svg" alt="" width="16" height="16" />
-        {{ invite().LocationAddress }}
-      </li>
-      <li class="meta-item">
-        <img src="assets/svg/calendar-green.svg" alt="" width="16" height="16" />
-        <time [attr.datetime]="invite().StartTime">{{ invite().StartTime | date: 'MMM d, y' }}</time>
-      </li>
-      <li class="meta-item">
-        <img src="assets/svg/clock-green.svg" alt="" width="16" height="16" />
-        {{ invite().StartTime | date: 'HH:mm' }} – {{ invite().EndTime | date: 'HH:mm' }}
-      </li>
-      <li class="meta-item">
-        <img src="assets/svg/people-green.svg" alt="" width="16" height="16" />
-        {{ guestsLabel() }}
-      </li>
-    </ul>
+    @if (invite(); as current) {
+      <ul class="meta" aria-label="Reservation details">
+        <li class="meta-item">
+          <img src="assets/svg/location-green.svg" alt="" width="16" height="16" />
+          {{ current.LocationAddress }}
+        </li>
+        <li class="meta-item">
+          <img src="assets/svg/calendar-green.svg" alt="" width="16" height="16" />
+          <time [attr.datetime]="current.StartTime">{{ current.StartTime | date: 'MMM d, y' }}</time>
+        </li>
+        <li class="meta-item">
+          <img src="assets/svg/clock-green.svg" alt="" width="16" height="16" />
+          {{ current.StartTime | date: 'HH:mm' }} – {{ current.EndTime | date: 'HH:mm' }}
+        </li>
+        <li class="meta-item">
+          <img src="assets/svg/people-green.svg" alt="" width="16" height="16" />
+          {{ guestsLabel() }}
+        </li>
+      </ul>
+    }
   </header>
 
-  <ul class="participants">
-    @for (person of participants(); track person.id) {
-      <li><app-participant-card [participant]="person" /></li>
+  @switch (loadState()) {
+    @case ('loading') {
+      <p class="state" role="status">Loading group pre-order…</p>
     }
-  </ul>
 
-  <p class="grand-total">
-    <span>Grand Total</span>
-    <span class="grand-total-amount">{{ grandTotal() | currency }}</span>
-  </p>
+    @case ('not-found') {
+      <div class="state" role="alert">
+        <p class="state-title">Group reservation not found</p>
+        <p>Check the link or open the reservation from your reservations list.</p>
+      </div>
+    }
+
+    @case ('error') {
+      <div class="state" role="alert">
+        <p class="state-title">Couldn't load the group pre-order</p>
+        <button type="button" class="button button--secondary button--small" (click)="load()">Try again</button>
+      </div>
+    }
+
+    @case ('ready') {
+      @if (isOpen() && pendingCount() > 0) {
+        <p class="notice">
+          <img src="assets/svg/bell-regular.svg" alt="" width="20" height="20" />
+          {{ pendingMessage() }}
+        </p>
+      }
+
+      @if (isEmpty()) {
+        <p class="state">Participants haven't added any dishes yet</p>
+      }
+
+      <ul class="participants">
+        @for (person of participants(); track person.id) {
+          <li><app-participant-card [participant]="person" [isMe]="person.id === ownerSessionId()" /></li>
+        }
+      </ul>
+
+      @if (consolidated().items.length) {
+        <section class="consolidated" aria-labelledby="consolidated-title">
+          <h2 id="consolidated-title" class="consolidated-title">Consolidated pre-order</h2>
+          <p class="consolidated-hint">Only submitted carts go to the restaurant.</p>
+          <ul class="consolidated-items">
+            @for (item of consolidated().items; track item.dish.id) {
+              <li class="consolidated-item">
+                <span>{{ item.dish.name }} × {{ item.quantity }}</span>
+                <span class="consolidated-price">{{ item.dish.price * item.quantity | currency }}</span>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+
+      <p class="grand-total">
+        <span>Grand Total</span>
+        <span class="grand-total-amount">{{ grandTotal() | currency }}</span>
+      </p>
+
+      @if (isOpen()) {
+        <button
+          type="button"
+          class="button button--primary button--large button--full-width"
+          [disabled]="!canSubmit()"
+          (click)="openConfirm()"
+        >
+          Submit Pre-Order
+        </button>
+      } @else {
+        <button type="button" class="button button--primary button--large button--full-width" disabled>
+          Pre-Order Sent
+        </button>
+      }
+
+      @if (confirmOpen()) {
+        <app-modal title="Submit pre-order?" (closed)="closeConfirm()">
+          <p class="confirm-text">
+            The consolidated pre-order for {{ grandTotal() | currency }} will be sent to the restaurant.
+            Guests won't be able to change their carts after that.
+          </p>
+          <div modal-actions class="confirm-actions">
+            <button
+              type="button"
+              class="button button--secondary button--large"
+              [disabled]="submitting()"
+              (click)="closeConfirm()"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="button button--primary button--large"
+              [disabled]="submitting()"
+              (click)="submit()"
+            >
+              {{ submitting() ? 'Submitting…' : 'Submit' }}
+            </button>
+          </div>
+        </app-modal>
+      }
+    }
+  }
 </main>
