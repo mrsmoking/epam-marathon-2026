@@ -53,6 +53,25 @@
   }
 }
 
+.sync {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+
+.sync-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 20px;
+  color: color.$neutral-400;
+
+  &.failed {
+    color: color.$neutral-700;
+  }
+}
+
 .notice {
   display: flex;
   align-items: center;

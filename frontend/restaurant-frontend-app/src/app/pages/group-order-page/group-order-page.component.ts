@@ -3,9 +3,10 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
-import { finalize, forkJoin, map, switchMap } from 'rxjs';
+import { catchError, defer, EMPTY, exhaustMap, finalize, forkJoin, interval, map, Observable, Subscription, switchMap, tap } from 'rxjs';
 import { ParticipantCardComponent } from '@app/components/group-orders/participant-card/participant-card.component';
-import { GroupReservationStatus } from '@app/models/group-orders/group-status.model';
+import { GroupSessionsResponse } from '@app/models/group-orders/group-sessions-response.model';
+import { GroupReservationStatus, GroupStatusResponse } from '@app/models/group-orders/group-status.model';
 import { Participant } from '@app/models/group-orders/participant.model';
 import { GuestInvite } from '@app/models/reservations/guest-invite.model';
 import { GroupOrdersService } from '@app/services/group-orders/group-orders.service';
@@ -14,6 +15,8 @@ import { ModalComponent } from '@app/shared/custom-components/modal/modal.compon
 import { consolidatePreOrder } from '@app/shared/helpers/consolidate-pre-order';
 
 type LoadState = 'loading' | 'ready' | 'not-found' | 'error';
+
+const SYNC_INTERVAL_MS = 15_000;
 
 const STATUS_LABELS: Record<GroupReservationStatus, string> = {
   Open: 'Collecting pre-orders',
@@ -43,6 +46,13 @@ export class GroupOrderPageComponent {
   readonly submitting = signal(false);
   readonly confirmOpen = signal(false);
 
+  // фонова синхронізація: час останніх успішних даних, чи впала остання спроба, чи йде запит
+  readonly lastUpdated = signal<Date | null>(null);
+  readonly refreshFailed = signal(false);
+  readonly syncing = signal(false);
+
+  private syncTimer: Subscription | null = null;
+
   // у замовлення ресторану йдуть лише підтверджені кошики
   readonly consolidated = computed(() => consolidatePreOrder(this.participants()));
   readonly grandTotal = computed(() => this.consolidated().total);
@@ -70,6 +80,8 @@ export class GroupOrderPageComponent {
   }
 
   load(): void {
+    // Try again не повинен запускати другий таймер
+    this.stopSync();
     this.loadState.set('loading');
 
     this.groupOrders
@@ -89,14 +101,21 @@ export class GroupOrderPageComponent {
           this.invite.set(invite);
           this.participants.set(sessions.participants);
           this.ownerSessionId.set(ownerSessionId);
-          this.status.set(groupStatus.status);
+          this.applySync(sessions, groupStatus);
           this.loadState.set('ready');
+          if (this.isOpen()) this.startSync();
         },
         error: (error: unknown) => {
           const notFound = error instanceof HttpErrorResponse && error.status === 404;
           this.loadState.set(notFound ? 'not-found' : 'error');
         },
       });
+  }
+
+  /** Refresh: синхронізуватись зараз. Якщо запит уже йде — новий не стартує. */
+  refresh(): void {
+    if (this.syncing()) return;
+    this.sync$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
   }
 
   openConfirm(): void {
@@ -121,11 +140,61 @@ export class GroupOrderPageComponent {
       .subscribe({
         next: () => {
           this.status.set('Submitted');
+          this.stopSync();
           this.confirmOpen.set(false);
           this.toast.success('Pre-order sent to the restaurant');
         },
         // toast з текстом помилки вже показує tokenInterceptor
         error: () => this.confirmOpen.set(false),
       });
+  }
+
+  private startSync(): void {
+    // exhaustMap: поки попередній запит не відповів, тік таймера пропускається
+    this.syncTimer = interval(SYNC_INTERVAL_MS)
+      .pipe(
+        exhaustMap(() => this.sync$()),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+  }
+
+  private stopSync(): void {
+    this.syncTimer?.unsubscribe();
+    this.syncTimer = null;
+  }
+
+  /** Тихий запит кошиків і статусу: без лоадера і без toast, при помилці лишаються останні дані. */
+  private sync$(): Observable<unknown> {
+    const invite = this.invite();
+    if (!invite) return EMPTY;
+    const groupId = invite.GroupReservationId;
+
+    return defer(() => {
+      this.syncing.set(true);
+      return forkJoin({
+        sessions: this.groupOrders.getSessions$(groupId, { silent: true }),
+        groupStatus: this.groupOrders.getStatus$(groupId, { silent: true }),
+      });
+    }).pipe(
+      tap(({ sessions, groupStatus }) => {
+        // відповідь, що прийшла вже після Submit, не повертає сторінку в Open
+        if (!this.isOpen()) return;
+        this.applySync(sessions, groupStatus);
+        if (!this.isOpen()) this.stopSync();
+      }),
+      catchError(() => {
+        this.refreshFailed.set(true);
+        return EMPTY;
+      }),
+      finalize(() => this.syncing.set(false))
+    );
+  }
+
+  private applySync(sessions: GroupSessionsResponse, groupStatus: GroupStatusResponse): void {
+    this.participants.set(sessions.participants);
+    this.status.set(groupStatus.status);
+    this.lastUpdated.set(new Date());
+    this.refreshFailed.set(false);
   }
 }

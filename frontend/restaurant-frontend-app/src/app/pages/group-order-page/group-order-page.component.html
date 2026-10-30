@@ -27,6 +27,28 @@
         </li>
       </ul>
     }
+
+    @if (loadState() === 'ready') {
+      <div class="sync">
+        <p class="sync-text" [class.failed]="refreshFailed()" role="status">
+          @if (refreshFailed()) {
+            Couldn't refresh. Showing data from {{ lastUpdated() | date: 'HH:mm:ss' }}
+          } @else {
+            Updated at {{ lastUpdated() | date: 'HH:mm:ss' }}
+          }
+        </p>
+        @if (isOpen()) {
+          <button
+            type="button"
+            class="button button--secondary button--small"
+            [disabled]="syncing()"
+            (click)="refresh()"
+          >
+            Refresh
+          </button>
+        }
+      </div>
+    }
   </header>
 
   @switch (loadState()) {
