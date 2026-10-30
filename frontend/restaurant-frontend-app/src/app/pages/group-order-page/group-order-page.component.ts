@@ -46,6 +46,10 @@ export class GroupOrderPageComponent {
   readonly submitting = signal(false);
   readonly confirmOpen = signal(false);
 
+  // Remove Guest: кого видаляємо (діалог відкритий, поки не null) і чи йде запит
+  readonly removeTarget = signal<Participant | null>(null);
+  readonly removing = signal(false);
+
   // фонова синхронізація: час останніх успішних даних, чи впала остання спроба, чи йде запит
   readonly lastUpdated = signal<Date | null>(null);
   readonly refreshFailed = signal(false);
@@ -109,6 +113,42 @@ export class GroupOrderPageComponent {
           const notFound = error instanceof HttpErrorResponse && error.status === 404;
           this.loadState.set(notFound ? 'not-found' : 'error');
         },
+      });
+  }
+
+  canRemove(person: Participant): boolean {
+    return this.isOpen() && person.type === 'Guest';
+  }
+
+  openRemove(person: Participant): void {
+    if (this.canRemove(person)) this.removeTarget.set(person);
+  }
+
+  closeRemove(): void {
+    if (!this.removing()) this.removeTarget.set(null);
+  }
+
+  removeGuest(): void {
+    const invite = this.invite();
+    const person = this.removeTarget();
+    if (!invite || !person || this.removing()) return;
+
+    this.removing.set(true);
+    this.groupOrders
+      .removeSession$(invite.GroupReservationId, person.id)
+      .pipe(
+        finalize(() => this.removing.set(false)),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe({
+        next: (sessions) => {
+          // список і суми — з відповіді сервера, далі все перераховують ті самі computed()
+          this.participants.set(sessions.participants);
+          this.removeTarget.set(null);
+          this.toast.success(`${person.name} was removed from the reservation`);
+        },
+        // toast з текстом помилки вже показує tokenInterceptor, список не чіпаємо
+        error: () => this.removeTarget.set(null),
       });
   }
 

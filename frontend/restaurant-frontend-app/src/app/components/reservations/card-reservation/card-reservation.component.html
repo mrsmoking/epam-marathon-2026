@@ -196,6 +196,16 @@
       }
     }
 
+    @if (canOpenGroupPreOrder()) {
+      <button
+        type="button"
+        class="button button--secondary button--large"
+        (click)="onGroupPreOrder()"
+      >
+        Group Pre-Order
+      </button>
+    }
+
     @if (role() === Roles.CUSTOMER) {
       @if (
         r().status !==

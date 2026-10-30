@@ -164,6 +164,16 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+
+  // незворотна дія: червона обвідка, як у макеті Remove Guest
+  .danger {
+    color: color.$red-400;
+    border-color: color.$red-400;
+
+    &:hover:not(:disabled) {
+      background: color.$red-30;
+    }
+  }
 }
 
 .meta {

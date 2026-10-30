@@ -10,6 +10,12 @@
       }
     </div>
 
+    @if (canRemove()) {
+      <button type="button" class="remove" [attr.aria-label]="removeLabel()" (click)="removeClick.emit(participant())">
+        Remove Guest
+      </button>
+    }
+
     <button
       type="button"
       class="toggle"

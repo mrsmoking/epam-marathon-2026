@@ -29,6 +29,32 @@
   min-width: 0;
 }
 
+.remove {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  color: color.$neutral-900;
+  text-decoration: underline;
+  text-decoration-color: color.$neutral-600;
+  text-underline-offset: 6px;
+  cursor: pointer;
+
+  &:hover {
+    color: color.$red-400;
+    text-decoration-color: color.$red-400;
+  }
+
+  &:focus-visible {
+    outline: 2px solid color.$green-400;
+    outline-offset: 2px;
+  }
+}
+
 .toggle {
   display: flex;
   flex-shrink: 0;
@@ -182,6 +208,16 @@
 @media (max-width: 480px) {
   .card {
     padding: 12px;
+  }
+
+  .card-header {
+    flex-wrap: wrap;
+  }
+
+  // на вузькому екрані «Remove Guest» переноситься під заголовок
+  .remove {
+    order: 3;
+    margin-left: 0;
   }
 
   .item {

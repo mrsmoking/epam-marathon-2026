@@ -136,6 +136,18 @@ export class CardReservationComponent {
     );
   });
 
+  // груповий pre-order є лише в бронюваннях на 2+ гостей; після Submit екран лишається доступним (read-only)
+  readonly canOpenGroupPreOrder = computed(() => {
+    const reservation = this.r();
+
+    return (
+      this.role() === Roles.CUSTOMER &&
+      reservation.guestCount >= 2 &&
+      (reservation.status === ReservationStatusCustomer.Reserved ||
+        reservation.status === ReservationStatusCustomer.InProgress)
+    );
+  });
+
   readonly isAnonymous = computed(() => {
     return !this.r().customerId;
   });
@@ -173,6 +185,10 @@ export class CardReservationComponent {
       queryParams,
     });
   }
+  onGroupPreOrder(): void {
+    void this.router.navigate(['/reservations', this.r().id, 'group-order']);
+  }
+
   onPreOrderWaiter(): void {
     if (this.preOrderItemCount() > 0) {
       this.navigateToWaiterPreOrder();
