@@ -1,30 +1,54 @@
-<article class="card">
-  <h2 class="title">{{ title() }}</h2>
+<article class="card" [class.expanded]="expanded()">
+  <header class="card-header">
+    <div class="heading">
+      <h2 class="title">{{ title() }}</h2>
 
-  @if (participant().isSubmitted) {
-    <span class="chip submitted">Submitted</span>
-  } @else {
-    <span class="chip pending">Still choosing</span>
-  }
-
-  @if (participant().items.length) {
-    <ul class="items">
-      @for (item of participant().items; track item.dish.id) {
-        <li class="item">
-          @if (item.dish.imageUrl) {
-            <img class="avatar" [src]="item.dish.imageUrl" alt="" width="40" height="40" loading="lazy" />
-          } @else {
-            <span class="avatar initial" aria-hidden="true">{{ item.dish.name.charAt(0) }}</span>
-          }
-          <p class="name">{{ item.dish.name }}</p>
-          <p class="qty">× {{ item.quantity }}</p>
-          <p class="price">{{ item.dish.price * item.quantity | currency }}</p>
-        </li>
+      @if (participant().isSubmitted) {
+        <span class="chip submitted">Submitted</span>
+      } @else {
+        <span class="chip pending">Still choosing</span>
       }
-    </ul>
-  } @else {
-    <p class="empty">No dishes yet</p>
-  }
+    </div>
 
-  <p class="subtotal"><span>Subtotal</span><span>{{ participant().total | currency }}</span></p>
+    <button
+      type="button"
+      class="toggle"
+      [attr.aria-expanded]="expanded()"
+      [attr.aria-controls]="bodyId()"
+      [attr.aria-label]="toggleLabel()"
+      (click)="toggle()"
+    >
+      <span class="summary">
+        <span class="summary-total">{{ participant().total | currency }}</span>
+        <span class="summary-count">{{ itemsLabel() }}</span>
+      </span>
+      <svg class="chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+        <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </button>
+  </header>
+
+  <!-- згорнутий вміст лишається в DOM (hidden), щоб не втрачати стан і тексти -->
+  <div class="body" [id]="bodyId()" [hidden]="!expanded()">
+    @if (participant().items.length) {
+      <ul class="items">
+        @for (item of participant().items; track item.dish.id) {
+          <li class="item">
+            @if (item.dish.imageUrl) {
+              <img class="avatar" [src]="item.dish.imageUrl" alt="" width="40" height="40" loading="lazy" />
+            } @else {
+              <span class="avatar initial" aria-hidden="true">{{ item.dish.name.charAt(0) }}</span>
+            }
+            <p class="name">{{ item.dish.name }}</p>
+            <p class="qty">× {{ item.quantity }}</p>
+            <p class="price">{{ item.dish.price * item.quantity | currency }}</p>
+          </li>
+        }
+      </ul>
+    } @else {
+      <p class="empty">No dishes yet</p>
+    }
+
+    <p class="subtotal"><span>Subtotal</span><span>{{ participant().total | currency }}</span></p>
+  </div>
 </article>
