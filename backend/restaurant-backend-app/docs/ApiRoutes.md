@@ -1250,6 +1250,8 @@ Authorization: Cognito (`cognito_authorizer`). Only the owner of the parent rese
 
 Returns all participant sessions of the group pre-order with their dishes, a total per participant and a grand total. The owner's session has `type: "Owner"`, all others `type: "Guest"`. Order items whose dish no longer exists are skipped.
 
+The owner is always the first participant (`type: "Owner"`, id `owner-{groupReservationId}`, listed even before the owner session is created). The owner's dishes are taken from the reservation's pre-order (the active order), not from the owner session: lines in state `Canceled` are skipped, and `isSubmitted` is `true` once the pre-order exists (it goes to the restaurant together with the group). After a group submit the submitted guests' dishes are already merged into that order, so the owner's items are the order lines minus the dishes of submitted guests (lines that drop to `0` are skipped). The same snapshot is returned by `DELETE /guest/groups/{groupReservationId}/sessions/{guestSessionId}`.
+
 Response: `200 OK`
 ```json
 {

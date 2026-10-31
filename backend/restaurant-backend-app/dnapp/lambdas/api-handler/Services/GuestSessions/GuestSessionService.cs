@@ -11,6 +11,7 @@ using APIHandler.Repositories.Auth;
 using APIHandler.Repositories.Dishes;
 using APIHandler.Repositories.GroupReservations;
 using APIHandler.Repositories.GuestSessions;
+using APIHandler.Repositories.Orders;
 using APIHandler.Repositories.Reservations;
 using APIHandler.Repositories.Tables;
 using System;
@@ -29,7 +30,8 @@ public class GuestSessionService(
     IDishRepository dishRepository,
     IReservationRepository reservationRepository,
     IUserRepository userRepository,
-    ITableRepository tableRepository) : IGuestSessionService
+    ITableRepository tableRepository,
+    IOrderRepository orderRepository) : IGuestSessionService
 {
     public async Task<bool> IsAuthorizedAsync(string guestSessionToken, string guestSessionId)
     {
@@ -195,25 +197,36 @@ public class GuestSessionService(
         await guestSessionRepository.DeleteAsync(session);
 
         // The groupReservationId GSI is eventually consistent, so the deleted session may still be returned.
-        return await BuildSessionsSnapshotAsync(groupReservationId, guestSessionId);
+        return await BuildSessionsSnapshotAsync(group, guestSessionId);
     }
 
     public async Task<GetAllSessionsResponse> GetGroupSessionsAsync(string userId, string groupReservationId)
     {
-        await ValidateReservationOwnerAsync(groupReservationId, userId);
+        GroupReservation group = await ValidateReservationOwnerAsync(groupReservationId, userId);
 
-        return await BuildSessionsSnapshotAsync(groupReservationId);
+        return await BuildSessionsSnapshotAsync(group);
     }
 
-    private async Task<GetAllSessionsResponse> BuildSessionsSnapshotAsync(string groupReservationId, string? excludeSessionId = null)
+    private async Task<GetAllSessionsResponse> BuildSessionsSnapshotAsync(GroupReservation group, string? excludeSessionId = null)
     {
-        var sessions = (await guestSessionRepository.GetAllByGroupReservationIdAsync(groupReservationId) ?? [])
+        Task<List<GuestSession>> sessionsTask = guestSessionRepository.GetAllByGroupReservationIdAsync(group.GroupReservationId);
+        Task<Order?> orderTask = orderRepository.GetOrderByReservationIdAsync(group.ReservationId);
+
+        var sessions = ((await sessionsTask) ?? [])
             .Where(s => s.Id != excludeSessionId)
             .ToList();
+        Order? order = await orderTask;
 
-        var dishIds = sessions
+        var guestSessions = sessions.Where(s => !s.IsOwnerSession).ToList();
+        var ownerSession = sessions.FirstOrDefault(s => s.IsOwnerSession);
+
+        // The owner's dishes live in the reservation's pre-order, not in the owner session.
+        List<OrderItem> ownerDishes = GetOwnerDishes(order, group.Status, guestSessions);
+
+        var dishIds = guestSessions
             .SelectMany(s => s.Dishes ?? [])
-            .Select(s => s.DishId)
+            .Concat(ownerDishes)
+            .Select(d => d.DishId)
             .Distinct()
             .ToArray();
 
@@ -221,25 +234,74 @@ public class GuestSessionService(
             ? new Dictionary<string, Dish>()
             : (await dishRepository.GetDishesByIdsAsync(dishIds)).ToDictionary(d => d.Id);
 
-        var participants = new List<Participant>();
-
-        foreach (var guestSession in sessions)
+        // The owner is always listed first, even before the owner session is created (same deterministic id).
+        // The owner's pre-order goes to the restaurant in any case, so it counts as submitted once it exists.
+        var participants = new List<Participant>
         {
-            var items = (guestSession.Dishes ?? [])
-                .Where(d => dishesById.ContainsKey(d.DishId))
-                .Select(d => new OrderItemResponse
-                {
-                    Dish = DishMapper.ToDishResponse(dishesById[d.DishId]),
-                    Quantity = d.Quantity
-                }).ToArray();
+            BuildParticipant(
+                ownerSession?.Id ?? GetOwnerSessionId(group.GroupReservationId),
+                ParticipantType.Owner,
+                ownerSession?.GuestName ?? "Owner",
+                ownerDishes,
+                isSubmitted: order is not null,
+                dishesById)
+        };
 
-            decimal total = items.Sum(i => i.Quantity * i.Dish.Price);
-            var type = guestSession.IsOwnerSession ? ParticipantType.Owner : ParticipantType.Guest;
-            var participant = new Participant(guestSession.Id, type, guestSession.GuestName, items, total, guestSession.IsSubmitted);
-            participants.Add(participant);
-        }
+        participants.AddRange(guestSessions.Select(s =>
+            BuildParticipant(s.Id, ParticipantType.Guest, s.GuestName, s.Dishes ?? [], s.IsSubmitted, dishesById)));
 
         return new GetAllSessionsResponse(participants, participants.Sum(p => p.Total));
+    }
+
+    private static Participant BuildParticipant(
+        string id,
+        ParticipantType type,
+        string name,
+        IEnumerable<OrderItem> dishes,
+        bool isSubmitted,
+        IReadOnlyDictionary<string, Dish> dishesById)
+    {
+        var items = dishes
+            .Where(d => dishesById.ContainsKey(d.DishId))
+            .Select(d => new OrderItemResponse
+            {
+                Dish = DishMapper.ToDishResponse(dishesById[d.DishId]),
+                Quantity = d.Quantity
+            }).ToArray();
+
+        decimal total = items.Sum(i => i.Quantity * i.Dish.Price);
+        return new Participant(id, type, name, items, total, isSubmitted);
+    }
+
+    private static List<OrderItem> GetOwnerDishes(Order? order, GroupReservationStatus groupStatus, IEnumerable<GuestSession> guestSessions)
+    {
+        if (order is null)
+            return [];
+
+        var lines = (order.Dishes ?? [])
+            .Where(d => d.State != OrderItemState.Canceled && d.Quantity > 0 && !string.IsNullOrWhiteSpace(d.DishId))
+            .ToList();
+
+        if (groupStatus != GroupReservationStatus.Submitted)
+            return lines;
+
+        // After a group submit the submitted guests' dishes are already merged into the order,
+        // so the owner's share is what is left after subtracting them.
+        var mergedFromGuests = guestSessions
+            .Where(s => s.IsSubmitted)
+            .SelectMany(s => s.Dishes ?? [])
+            .GroupBy(d => d.DishId)
+            .ToDictionary(g => g.Key, g => g.Sum(d => d.Quantity));
+
+        return lines
+            .Select(d => new OrderItem
+            {
+                DishId = d.DishId,
+                Quantity = d.Quantity - mergedFromGuests.GetValueOrDefault(d.DishId),
+                State = d.State
+            })
+            .Where(d => d.Quantity > 0)
+            .ToList();
     }
 
     public async Task SubmitCartAsync(string guestSessionId)
