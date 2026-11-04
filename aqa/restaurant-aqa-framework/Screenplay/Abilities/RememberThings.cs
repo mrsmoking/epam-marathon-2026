@@ -32,6 +32,13 @@ public sealed class RememberThings(ScenarioContext scenario) : IRemember
         return found;
     }
 
+    public bool TryRecall<T>(string name, out T thing) where T : notnull
+    {
+        var found = scenario.TryGetValue(NamedKey<T>(name), out T? value);
+        thing = value!;
+        return found;
+    }
+
     public IReadOnlyList<T> RecallAll<T>() where T : notnull =>
         scenario.TryGetValue(HistoryKey<T>(), out List<T>? all) ? all! : [];
 

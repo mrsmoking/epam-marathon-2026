@@ -24,6 +24,9 @@ public interface IRemember
 
     bool TryRecall<T>(out T thing) where T : notnull;
 
+    /// <summary>The <typeparamref name="T"/> remembered under <paramref name="name"/>, if there is one.</summary>
+    bool TryRecall<T>(string name, out T thing) where T : notnull;
+
     /// <summary>Every <typeparamref name="T"/> remembered in this scenario, oldest first.</summary>
     IReadOnlyList<T> RecallAll<T>() where T : notnull;
 }

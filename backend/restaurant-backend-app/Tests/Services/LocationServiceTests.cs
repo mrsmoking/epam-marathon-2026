@@ -39,6 +39,9 @@ public class LocationServiceTests
         _mockLocationRepository
             .Setup(r => r.GetLocationByIdAsync(locationId))
             .ReturnsAsync(existingLocation);
+        _mockLocationRepository
+            .Setup(r => r.UpdateLocationDetailsAsync(existingLocation))
+            .ReturnsAsync(true);
 
         var result = await _locationService.UpdateLocationAsync(locationId, request, newImageUrl);
 
@@ -51,7 +54,72 @@ public class LocationServiceTests
         // Ensure rating was NOT overwritten by the request
         Assert.Equal(originalRating, result.Rating);
 
-        _mockLocationRepository.Verify(r => r.SaveLocationAsync(existingLocation), Times.Once);
+        // Only the details are written; a full save would write back a stale menu.
+        _mockLocationRepository.Verify(r => r.UpdateLocationDetailsAsync(existingLocation), Times.Once);
+        _mockLocationRepository.Verify(r => r.SaveLocationAsync(It.IsAny<Location>()), Times.Never);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task UpdateLocationAsync_LocationDeletedMeanwhile_ThrowsValidationException(
+        string locationId,
+        Location existingLocation,
+        CreateLocationRequest request)
+    {
+        _mockLocationRepository
+            .Setup(r => r.GetLocationByIdAsync(locationId))
+            .ReturnsAsync(existingLocation);
+        _mockLocationRepository
+            .Setup(r => r.UpdateLocationDetailsAsync(existingLocation))
+            .ReturnsAsync(false);
+
+        var exception = await Assert.ThrowsAsync<ValidationException>(() =>
+            _locationService.UpdateLocationAsync(locationId, request, null));
+
+        Assert.Contains("not found", exception.Message);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task RemoveDishFromLocationAsync_DishOnTheMenu_RemovesItAtomically(
+        string locationId,
+        string dishId,
+        Location location)
+    {
+        _mockLocationRepository.Setup(r => r.GetLocationByIdAsync(locationId)).ReturnsAsync(location);
+        _mockLocationRepository.Setup(r => r.RemoveSpecialtyDishAsync(locationId, dishId)).ReturnsAsync(true);
+
+        await _locationService.RemoveDishFromLocationAsync(locationId, dishId);
+
+        _mockLocationRepository.Verify(r => r.RemoveSpecialtyDishAsync(locationId, dishId), Times.Once);
+        _mockLocationRepository.Verify(r => r.SaveLocationAsync(It.IsAny<Location>()), Times.Never);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task RemoveDishFromLocationAsync_DishNotOnTheMenu_ThrowsValidationException(
+        string locationId,
+        string dishId,
+        Location location)
+    {
+        _mockLocationRepository.Setup(r => r.GetLocationByIdAsync(locationId)).ReturnsAsync(location);
+        _mockLocationRepository.Setup(r => r.RemoveSpecialtyDishAsync(locationId, dishId)).ReturnsAsync(false);
+
+        var exception = await Assert.ThrowsAsync<ValidationException>(() =>
+            _locationService.RemoveDishFromLocationAsync(locationId, dishId));
+
+        Assert.Contains("not currently on the menu", exception.Message);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task RemoveDishFromLocationAsync_LocationNotFound_ThrowsValidationException(string locationId, string dishId)
+    {
+        _mockLocationRepository.Setup(r => r.GetLocationByIdAsync(locationId)).ReturnsAsync((Location?)null);
+
+        await Assert.ThrowsAsync<ValidationException>(() => _locationService.RemoveDishFromLocationAsync(locationId, dishId));
+
+        _mockLocationRepository.Verify(r => r.RemoveSpecialtyDishAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     [Theory]

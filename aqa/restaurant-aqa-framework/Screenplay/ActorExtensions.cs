@@ -23,6 +23,9 @@ public static class ActorExtensions
     public static bool TryRecall<T>(this Actor actor, out T thing) where T : notnull =>
         actor.AbilityTo<IRemember>().TryRecall(out thing);
 
+    public static bool TryRecall<T>(this Actor actor, string name, out T thing) where T : notnull =>
+        actor.AbilityTo<IRemember>().TryRecall(name, out thing);
+
     public static IReadOnlyList<T> RecallAll<T>(this Actor actor) where T : notnull =>
         actor.AbilityTo<IRemember>().RecallAll<T>();
 

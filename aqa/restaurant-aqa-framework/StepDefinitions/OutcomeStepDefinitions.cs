@@ -42,6 +42,36 @@ public sealed class OutcomeStepDefinitions(Actor actor) : StepDefinitionBase(act
         await Assert.That(outcome.Status).IsGreaterThanOrEqualTo(400).Because($"the location was created: {outcome.Body}");
     }
 
+    // Group pre-order: the owner-only routes sit behind the Cognito authorizer, which turns away a missing or
+    // non-Cognito token (a guest's session token) itself; a signed-in non-owner is refused by the handler.
+    [Then("they are told to sign in first")]
+    public async Task ThenTheyAreToldToSignInFirst()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(401).Because($"response body was: {outcome.Body}");
+    }
+
+    [Then("they are told they may not see the participants")]
+    public async Task ThenTheyAreToldTheyMayNotSeeTheParticipants()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(403).Because($"response body was: {outcome.Body}");
+    }
+
+    [Then("the owner is told the group could not be found")]
+    [Scope(Tag = "api")]
+    public async Task ThenTheOwnerIsToldTheGroupCouldNotBeFound()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(404).Because($"response body was: {outcome.Body}");
+    }
+
+    [Then("the owner is told the group could not be found")]
+    [Scope(Tag = "ui")]
+    public async Task ThenTheOwnerSeesTheGroupCouldNotBeFound() =>
+        await Assert.That((await Actor.AsksForAsync(new TheGroupOrderMessages())).NotFound).IsTrue()
+            .Because("the screen did not say the group reservation was not found");
+
     [Then("the information is available")]
     [Then("the menu is shown")]
     public async Task ThenInformationIsAvailable()

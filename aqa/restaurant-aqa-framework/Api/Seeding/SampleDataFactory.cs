@@ -83,6 +83,11 @@ public static class SampleDataFactory
             EndTime: startTime.AddHours(1),
             GuestCount: guestCount);
 
+    /// <summary>A start time for a group booking: noon UTC on a random day one to eight weeks ahead, well past the
+    /// 15 minute notice period. Each scenario books a table of its own, so the day only has to be in the future.</summary>
+    public static DateTime GroupBookingStart() =>
+        DateTime.UtcNow.Date.AddDays(Faker.Random.Int(7, 56)).AddHours(12);
+
     public static CreateFeedbackRequest CreateFeedbackRequest(
         string reservationId, int rating = 5, FeedbackType type = FeedbackType.Service) =>
         new(

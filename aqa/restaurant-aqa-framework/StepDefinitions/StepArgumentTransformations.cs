@@ -1,4 +1,5 @@
 using Restaurant_Aqa_Framework.Api.Dtos.Dishes;
+using Restaurant_Aqa_Framework.Screenplay;
 using Restaurant_Aqa_Framework.Support;
 
 namespace Restaurant_Aqa_Framework.StepDefinitions;
@@ -74,6 +75,17 @@ public static class StepArgumentTransformations
 
     [StepArgumentTransformation(Name = "information", Regex = "(dish catalog|popular dishes|list of locations)")]
     public static string ToInformation(string value) => value;
+
+    [StepArgumentTransformation(Name = "someone", Regex = "(the owner|another customer|the waiter|a guest of the group|a visitor who is not signed in)")]
+    public static Someone ToSomeone(string value) => value switch
+    {
+        "the owner" => Someone.TheOwner,
+        "another customer" => Someone.AnotherCustomer,
+        "the waiter" => Someone.TheWaiter,
+        "a guest of the group" => Someone.AGuestOfTheGroup,
+        "a visitor who is not signed in" => Someone.AVisitorWhoIsNotSignedIn,
+        _ => throw new ArgumentOutOfRangeException(nameof(value), value, null),
+    };
 
     [StepArgumentTransformation]
     public static Fields ToFields(DataTable table) => Fields.From(table);

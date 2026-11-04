@@ -6,9 +6,9 @@ using APIHandler.Entities;
 using APIHandler.Helpers;
 using APIHandler.Mappers;
 using APIHandler.Models.Dishes;
+using APIHandler.Repositories.Locations;
 using APIHandler.Services;
 using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -17,18 +17,19 @@ namespace APIHandler.Handlers.Dishes;
 
 public class CreateDishHandler : IApiRequestHandler
 {
-    private static readonly string LocationsTableName = ResourceNames.LocationsTableName;
     private static readonly string DishesTableName = ResourceNames.DishesTableName;
     private static readonly string DishesImageFolderName = "assets/img/dishes";
     private readonly string _bucketName = ResourceNames.ImagesBucketName;
 
     private readonly S3ImageService _s3ImageService;
     private readonly IDynamoDBContext _dbContext;
+    private readonly ILocationRepository _locationRepository;
 
-    public CreateDishHandler(IDynamoDBContext dbContext, S3ImageService s3ImageService)
+    public CreateDishHandler(IDynamoDBContext dbContext, S3ImageService s3ImageService, ILocationRepository locationRepository)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _s3ImageService = s3ImageService ?? throw new ArgumentNullException(nameof(s3ImageService));
+        _locationRepository = locationRepository ?? throw new ArgumentNullException(nameof(locationRepository));
     }
 
     public async Task<APIGatewayProxyResponse> HandleRequest(APIGatewayProxyRequest request, ILambdaContext context)
@@ -69,12 +70,8 @@ public class CreateDishHandler : IApiRequestHandler
 
         foreach (var locationId in createDishRequest.LocationIds)
         {
-            var location = await _dbContext.LoadAsync<Location>(locationId, new LoadConfig()
-            {
-                OverrideTableName = LocationsTableName,
-            });
-
-            if (location is null)
+            // Atomic append: dishes created at the same time for the same location no longer overwrite each other.
+            if (!await _locationRepository.AddSpecialtyDishAsync(locationId, newDish.Id))
             {
                 return ResponseBuilder.CreateErrorResponse(
                     (int)HttpStatusCode.NotFound,
@@ -82,13 +79,7 @@ public class CreateDishHandler : IApiRequestHandler
                     context.Logger);
             }
 
-            location.SpecialtyDishIds ??= new List<string>();
-            if (!location.SpecialtyDishIds.Contains(newDish.Id))
-            {
-                location.SpecialtyDishIds.Add(newDish.Id);
-                await _dbContext.SaveAsync(location, DynamoConfig.SaveConfig(LocationsTableName));
-                context.Logger.Log($"The dish with id: {newDish.Id} was added to location with id: {locationId}.");
-            }
+            context.Logger.Log($"The dish with id: {newDish.Id} was added to location with id: {locationId}.");
         }
 
         var dishResponse = DishMapper.ToDishResponse(newDish);

@@ -63,16 +63,9 @@ public class DishService : IDishService
 
         if (request.LocationIds != null && request.LocationIds.Any())
         {
-            var locations = await _locationRepository.GetAllLocationsAsync();
-            foreach (var location in locations.Where(l => request.LocationIds.Contains(l.Id)))
-            {
-                location.SpecialtyDishIds ??= [];
-                if (!location.SpecialtyDishIds.Contains(dishId))
-                {
-                    location.SpecialtyDishIds.Add(dishId);
-                    await _locationRepository.SaveLocationAsync(location);
-                }
-            }
+            // Atomic per location; an unknown location id is skipped, as before.
+            foreach (var locationId in request.LocationIds.Distinct())
+                await _locationRepository.AddSpecialtyDishAsync(locationId, dishId);
         }
 
         return existingDish;
@@ -96,10 +89,7 @@ public class DishService : IDishService
         if (force)
         {
             foreach (var loc in linkedLocations)
-            {
-                loc.SpecialtyDishIds!.Remove(dishId);
-                await _locationRepository.SaveLocationAsync(loc);
-            }
+                await _locationRepository.RemoveSpecialtyDishAsync(loc.Id, dishId);
         }
 
         await _dishRepository.DeleteDishAsync(existingDish);

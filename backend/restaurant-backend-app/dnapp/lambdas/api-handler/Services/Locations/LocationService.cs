@@ -64,18 +64,12 @@ public class LocationService : ILocationService
 
     public async Task RemoveDishFromLocationAsync(string locationId, string dishId)
     {
-        var location = await _locationRepository.GetLocationByIdAsync(locationId)
+        _ = await _locationRepository.GetLocationByIdAsync(locationId)
             ?? throw new ValidationException($"Location '{locationId}' not found.");
 
-        if (location.SpecialtyDishIds != null && location.SpecialtyDishIds.Contains(dishId))
-        {
-            location.SpecialtyDishIds.Remove(dishId);
-            await _locationRepository.SaveLocationAsync(location);
-        }
-        else
-        {
+        // Atomic removal: a dish added to the same menu meanwhile is not lost.
+        if (!await _locationRepository.RemoveSpecialtyDishAsync(locationId, dishId))
             throw new ValidationException($"Dish '{dishId}' is not currently on the menu for this location.");
-        }
     }
 
     public async Task<Location> UpdateLocationAsync(string locationId, CreateLocationRequest request, string? newImageUrl)
@@ -96,7 +90,10 @@ public class LocationService : ILocationService
             existingLocation.ImageUrl = newImageUrl;
         }
 
-        await _locationRepository.SaveLocationAsync(existingLocation);
+        // Only the edited details are written, so a dish added to the menu meanwhile is kept.
+        if (!await _locationRepository.UpdateLocationDetailsAsync(existingLocation))
+            throw new ValidationException($"Location with id '{locationId}' was not found.");
+
         return existingLocation;
     }
 
