@@ -82,7 +82,9 @@ dotnet run --no-build -- --treenode-filter "/*/*/*/*[Category=smoke]"  # най�
 - `*-report.html` і `*.trx` — TUnit;
 - `traces/*.zip` — Playwright trace впалих UI-сценаріїв; відкриваються `npx playwright show-trace <file>.zip`.
 
-У CI (`.github/workflows/aqa-tests.yml`, Actions → AQA Tests → Run workflow) можна вибрати рівень, стадію або `e2e`. Звіти й traces публікуються як артефакти навіть тоді, коли тести впали.
+У CI (`.github/workflows/aqa-tests.yml`, Actions → AQA Tests → Run workflow) можна вибрати рівень, стадію або `e2e`, а також скільки сценаріїв іде одночасно (`max_parallel`, за замовчуванням 2). Звіти й traces публікуються як артефакти навіть тоді, коли тести впали.
+
+Паралельність у CI обмежена 2 свідомо. Розгорнутий бекенд — одна невелика Lambda за API Gateway. Коли з раннера одночасно йшли 4 сценарії, API Gateway відповідав `500 "Internal server error"` і запити не вкладались у таймаут. З двома сценаріями повний прогін (125) проходить приблизно за 6 хв, і червоними лишаються тільки 6 сценаріїв `@known-defect` з наданого фреймворку. Тому job зі scope `all` червоний; `L1` / `L2` / `L3` — зелені.
 
 ## Run the tests
 
