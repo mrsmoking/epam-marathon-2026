@@ -16,6 +16,14 @@ on:
           - e2e
           - smoke
         default: all
+      max_parallel:
+        description: "How many scenarios run at once (1 = one after another)"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "4"
+        default: "2"
       custom_filter:
         description: >
           Optional Microsoft.Testing.Platform tree filter (overrides "scope" when set), e.g.
@@ -46,6 +54,10 @@ jobs:
         working-directory: aqa/restaurant-aqa-framework
     env:
       HEADLESS: "true"
+      # How many scenarios run at once (Configuration/ParallelismConfig.cs). The develop backend is one small
+      # Lambda behind API Gateway: with 4 scenarios at once from the runner it answered 500 "Internal server error"
+      # and timed out under the burst, so CI runs fewer at a time (2 by default; set it per run below).
+      MAX_PARALLEL_TESTS: ${{ inputs.max_parallel || '2' }}
       # Default anyway (Configuration/Settings.cs) - set explicitly so the choice is visible here:
       # a trace is only captured for a failed @ui scenario (or one tagged @trace-always).
       TRACE_MODE: "OnFailureOnly"
