@@ -80,20 +80,26 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
 
     [Then("the owner sees the participants:")]
     [Scope(Tag = "api")]
-    public async Task ThenTheOwnerIsToldTheParticipants(DataTable participants) =>
-        await AssertParticipants(await Actor.AsksForAsync(new TheParticipantsListed()), participants);
+    public async Task ThenTheOwnerIsToldTheParticipants(DataTable participants)
+    {
+        var expected = ExpectedLines(participants);
+        await AssertParticipants(await SettledAsync(onScreen: false, shown => Matches(shown, expected)), expected);
+    }
 
     [Then("the owner sees the participants:")]
     [Scope(Tag = "ui")]
-    public async Task ThenTheOwnerSeesTheParticipantsOnTheScreen(DataTable participants) =>
-        await AssertParticipants(await Actor.AsksForAsync(new TheParticipantsShown()), participants);
+    public async Task ThenTheOwnerSeesTheParticipantsOnTheScreen(DataTable participants)
+    {
+        var expected = ExpectedLines(participants);
+        await AssertParticipants(await SettledAsync(onScreen: true, shown => Matches(shown, expected)), expected);
+    }
 
     /// <summary>The service's total counts every cart, submitted or not.</summary>
     [Then("the group total is {decimal}")]
     [Scope(Tag = "api")]
     public async Task ThenTheGroupTotalIs(decimal total)
     {
-        var view = await Actor.AsksForAsync(new TheParticipantsListed());
+        var view = await SettledAsync(onScreen: false, shown => shown.Total == total);
 
         await Assert.That(view.Total).IsEqualTo(total).Because($"the participants were: {view.Body}");
         await Assert.That(view.Total).IsEqualTo(view.Lines.Sum(l => l.Total))
@@ -104,7 +110,7 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
     [Then("the grand total of the submitted carts is {decimal}")]
     public async Task ThenTheGrandTotalOfTheSubmittedCartsIs(decimal total)
     {
-        var view = await Actor.AsksForAsync(new TheParticipantsShown());
+        var view = await SettledAsync(onScreen: true, shown => shown.Total == total);
 
         await Assert.That(view.Total).IsEqualTo(total).Because(view.Body);
         await Assert.That(view.Total)
@@ -125,14 +131,42 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
         await Assert.That((await Actor.AsksForAsync(new TheGroupOrderMessages())).NothingChosenYet).IsTrue()
             .Because("the screen did not say that no dishes have been added yet");
 
-    private static async Task AssertParticipants(ParticipantsView view, DataTable participants)
+    /// <summary>
+    /// The owner's list is built from an index that catches up with a guest's change a moment later (DynamoDB global
+    /// secondary indexes are eventually consistent), so a list read right after the change can still show the old cart —
+    /// on the screen too, until the next Refresh. Like the owner would, this looks again (Refresh on the screen, a new
+    /// request through the service) a few times until the list is what the step expects; the step then asserts on the
+    /// last answer, so a list that never catches up still fails.
+    /// </summary>
+    private async Task<ParticipantsView> SettledAsync(bool onScreen, Func<ParticipantsView, bool> isAsExpected)
     {
-        var expected = participants.Rows.Select(row => new ParticipantLine(
+        const int attempts = 5;
+
+        var view = await ReadAsync(onScreen);
+        for (var attempt = 1; attempt < attempts && !isAsExpected(view); attempt++)
+        {
+            await Actor.AttemptsToAsync(onScreen ? new RefreshTheParticipants() : new LookAtTheParticipants(Someone.TheOwner));
+            view = await ReadAsync(onScreen);
+        }
+
+        return view;
+    }
+
+    private Task<ParticipantsView> ReadAsync(bool onScreen) =>
+        onScreen ? Actor.AsksForAsync(new TheParticipantsShown()) : Actor.AsksForAsync(new TheParticipantsListed());
+
+    private static List<ParticipantLine> ExpectedLines(DataTable participants) =>
+        participants.Rows.Select(row => new ParticipantLine(
             Who: row["participant"],
             Dishes: row["dishes"] == ParticipantLine.NoDishes ? ParticipantLine.NoDishes : ParticipantLine.Normalize(row["dishes"]),
             Total: ParseAmount(row["total"]),
             Cart: row["cart"])).ToList();
 
+    private static bool Matches(ParticipantsView view, List<ParticipantLine> expected) =>
+        view.Lines.Count == expected.Count && expected.All(view.Lines.Contains);
+
+    private static async Task AssertParticipants(ParticipantsView view, List<ParticipantLine> expected)
+    {
         await Assert.That(view.Lines.Count).IsEqualTo(expected.Count).Because($"the participants were: {view.Body}");
         await Assert.That(view.Lines[0].Who).IsEqualTo(ParticipantLine.TheOwner)
             .Because($"the owner is always listed first: {view.Body}");

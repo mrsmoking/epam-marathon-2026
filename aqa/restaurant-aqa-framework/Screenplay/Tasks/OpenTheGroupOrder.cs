@@ -20,8 +20,16 @@ public sealed class OpenTheGroupOrder(bool ofABookingThatDoesNotExist = false) :
     }
 }
 
-/// <summary>The owner presses Refresh on the group pre-order screen and waits for the new list of participants.</summary>
+/// <summary>The owner presses Refresh on the group pre-order screen and waits for the new list of participants. Once
+/// the pre-order is sent there is no Refresh button any more; the screen is then opened again instead.</summary>
 public sealed class RefreshTheParticipants : ITask
 {
-    public Task PerformAsAsync(Actor actor) => new GroupOrderPage(actor.LookingAtThePage()).RefreshAsync();
+    public async Task PerformAsAsync(Actor actor)
+    {
+        var page = new GroupOrderPage(actor.LookingAtThePage());
+        if (await page.RefreshButton.IsVisibleAsync())
+            await page.RefreshAsync();
+        else
+            await actor.AttemptsToAsync(new OpenTheGroupOrder());
+    }
 }

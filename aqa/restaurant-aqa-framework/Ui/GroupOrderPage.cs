@@ -64,11 +64,17 @@ public sealed class GroupOrderPage(IPage page) : BasePage(page)
         await ConfirmRemoveButton.WaitForAsync(new() { State = WaitForSelectorState.Hidden });
     }
 
-    /// <summary>Clicks Refresh and waits for the new list of participants to arrive.</summary>
-    public Task RefreshAsync() =>
-        Page.RunAndWaitForResponseAsync(
+    /// <summary>Clicks Refresh and waits until the list its own request brought back is on the screen: the request is
+    /// the one the click sent (not a background sync already under way), and the button is enabled again once the
+    /// page has applied the answer.</summary>
+    public async Task RefreshAsync()
+    {
+        var request = await Page.RunAndWaitForRequestAsync(
             () => RefreshButton.ClickAsync(),
-            response => response.Request.Method == "GET"
-                && response.Url.Contains("/sessions", StringComparison.Ordinal)
-                && response.Url.Contains("/guest/groups/", StringComparison.Ordinal));
+            request => request.Method == "GET"
+                && request.Url.Contains("/guest/groups/", StringComparison.Ordinal)
+                && request.Url.EndsWith("/sessions", StringComparison.Ordinal));
+        await request.ResponseAsync();
+        await RefreshButton.And(Page.Locator("button:enabled")).WaitForAsync();
+    }
 }
