@@ -5,7 +5,7 @@
   "resource_type": "lambda",
   "iam_role_name": "api-handler-role",
   "runtime": "dotnet10",
-  "memory": 128,
+  "memory": 512,
   "timeout": 100,
   "lambda_path": "lambdas\\api-handler",
   "dependencies": [],
