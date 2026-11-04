@@ -3,13 +3,13 @@ using Restaurant_Aqa_Framework.Api.Dtos.GroupPreOrders;
 
 namespace Restaurant_Aqa_Framework.Screenplay.Tasks;
 
-/// <summary>A guest joins the current group pre-order under their name and is remembered by it. Nothing to remove
-/// afterwards: cancelling the booking closes the group and every session in it.</summary>
-public sealed class JoinTheGroup(string guestName) : ITask
+/// <summary>A guest joins the current group pre-order (or the one named) under their name and is remembered by it.
+/// Nothing to remove afterwards: cancelling the booking closes the group and every session in it.</summary>
+public sealed class JoinTheGroup(string guestName, string? groupName = null) : ITask
 {
     public async Task PerformAsAsync(Actor actor)
     {
-        var group = actor.Recall<GroupBooking>();
+        var group = actor.Recall<GroupBooking>(groupName);
         var response = actor.TheLastResponse();
 
         await response.CaptureAsync(await new GuestSessionsApi(actor.UsingTheApi())

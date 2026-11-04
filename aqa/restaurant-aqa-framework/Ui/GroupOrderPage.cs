@@ -44,6 +44,26 @@ public sealed class GroupOrderPage(IPage page) : BasePage(page)
 
     public ParticipantCardComponent Participant(int index) => new(ParticipantCards.Nth(index));
 
+    public ParticipantCardComponent Guest(string name) =>
+        new(ParticipantCards.Filter(new()
+        {
+            Has = Page.GetByRole(AriaRole.Heading, new() { Name = $"{ParticipantCardComponent.GuestTitlePrefix}{name}", Exact = true }),
+        }));
+
+    /// <summary>The dialog's own "Remove Guest" button — the card's button of the same text is named "Remove &lt;name&gt;".</summary>
+    public ILocator ConfirmRemoveButton => Page.GetByRole(AriaRole.Button, new() { Name = "Remove Guest", Exact = true });
+
+    /// <summary>Presses Remove on the guest's card, confirms in the dialog and waits for the updated list.</summary>
+    public async Task RemoveGuestAsync(string name)
+    {
+        await Guest(name).RemoveButton(name).ClickAsync();
+        await Page.RunAndWaitForResponseAsync(
+            () => ConfirmRemoveButton.ClickAsync(),
+            response => response.Request.Method == "DELETE"
+                && response.Url.Contains("/guest/groups/", StringComparison.Ordinal));
+        await ConfirmRemoveButton.WaitForAsync(new() { State = WaitForSelectorState.Hidden });
+    }
+
     /// <summary>Clicks Refresh and waits for the new list of participants to arrive.</summary>
     public Task RefreshAsync() =>
         Page.RunAndWaitForResponseAsync(

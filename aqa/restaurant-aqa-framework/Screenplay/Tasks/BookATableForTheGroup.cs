@@ -10,12 +10,14 @@ namespace Restaurant_Aqa_Framework.Screenplay.Tasks;
 
 /// <summary>The owner books a table for a group: a sample table of exactly that size is added at the waiter's
 /// location (so no other scenario can collide with it), the owner books it and opens the invite, which leads to
-/// the group pre-order. Removal runs in reverse: the booking is cancelled first, then the table is deleted.</summary>
-public sealed class BookATableForTheGroup(int guestCount) : ITask
+/// the group pre-order. Removal runs in reverse: the booking is cancelled first, then the table is deleted.
+/// By default the owner books and the group becomes the scenario's current one; another customer's booking is
+/// remembered under <paramref name="groupName"/> and leaves the current group as it was.</summary>
+public sealed class BookATableForTheGroup(int guestCount, string persona = Personas.Owner, string? groupName = null) : ITask
 {
     public async Task PerformAsAsync(Actor actor)
     {
-        var owner = await actor.AsksForAsync(new TheCustomerSession(Personas.Owner));
+        var owner = await actor.AsksForAsync(new TheCustomerSession(persona));
         var waiter = await actor.AsksForAsync(new TheWaiterSession());
         var location = await actor.AsksForAsync(new TheWaitersLocation());
         var cleanup = actor.Recall<CleanupScope>();
@@ -47,7 +49,18 @@ public sealed class BookATableForTheGroup(int guestCount) : ITask
         Ensure(response.Succeeded, "Opening the invite", response);
         var invite = response.Json<InviteResponse>();
 
-        actor.Remember(new GroupBooking(reservation.Id, invite.GroupReservationId, inviteToken, guestCount));
+        var booking = new GroupBooking(reservation.Id, invite.GroupReservationId, inviteToken, guestCount);
+        if (groupName is null)
+        {
+            actor.Remember(booking);
+            return;
+        }
+
+        // A named group is also made "the current" one by memory; put the scenario's own group back in front.
+        var current = actor.TryRecall<GroupBooking>(out var own) ? own : null;
+        actor.Remember(groupName, booking);
+        if (current is not null)
+            actor.Remember(current);
     }
 
     private static void Ensure(bool succeeded, string what, ApiResponseContext response)

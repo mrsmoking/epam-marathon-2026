@@ -125,6 +125,31 @@ public sealed class OutcomeStepDefinitions(Actor actor) : StepDefinitionBase(act
         await Assert.That(outcome.Body).Contains("already submitted").Because($"response body was: {outcome.Body}");
     }
 
+    // Removing a participant: someone outside the group or the owner's own session is a 400 business refusal,
+    // a session nobody has is a 404, a signed-in non-owner is a 403.
+    [Then("the owner is told the guest is not part of this group")]
+    [Then("the owner is told the owner cannot be removed")]
+    public async Task ThenTheOwnerIsToldTheParticipantCannotBeRemoved()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(400).Because($"response body was: {outcome.Body}");
+        await Assert.That(outcome.Body).DoesNotContain("GroupReservationSubmitted").Because($"response body was: {outcome.Body}");
+    }
+
+    [Then("the owner is told the participant could not be found")]
+    public async Task ThenTheOwnerIsToldTheParticipantCouldNotBeFound()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(404).Because($"response body was: {outcome.Body}");
+    }
+
+    [Then("they are told they may not remove participants")]
+    public async Task ThenTheyAreToldTheyMayNotRemoveParticipants()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(403).Because($"response body was: {outcome.Body}");
+    }
+
     [Then("the information is available")]
     [Then("the menu is shown")]
     public async Task ThenInformationIsAvailable()
