@@ -31,6 +31,7 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
     public Task GivenGuestHasAddedToTheCart(string guest, int quantity, string dish) =>
         Actor.AttemptsToAsync(new AddToTheCart(guest, dish, quantity));
 
+    [Given("{string} has taken {int} {string} out of the cart")]
     [When("{string} takes {int} {string} out of the cart")]
     public Task WhenGuestTakesOutOfTheCart(string guest, int quantity, string dish) =>
         Actor.AttemptsToAsync(new TakeOutOfTheCart(guest, dish, quantity));
@@ -38,6 +39,14 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
     [Given("{string} has submitted the cart")]
     [When("{string} submits the cart")]
     public Task GivenGuestHasSubmittedTheCart(string guest) => Actor.AttemptsToAsync(new SubmitTheCart(guest));
+
+    [When("{string} tries to submit the cart")]
+    public Task WhenGuestTriesToSubmitTheCart(string guest) =>
+        Actor.AttemptsToAsync(new SubmitTheCart(guest, mustSucceed: false));
+
+    [When("{string} tries to take {int} {string} out of the cart")]
+    public Task WhenGuestTriesToTakeOutOfTheCart(string guest, int quantity, string dish) =>
+        Actor.AttemptsToAsync(new TakeOutOfTheCart(guest, dish, quantity, mustSucceed: false));
 
     // ---- looking at the participants ----
 

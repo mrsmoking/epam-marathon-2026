@@ -47,5 +47,6 @@ public sealed record ParticipantItem(ParticipantDish Dish, int Quantity);
 
 public sealed record ParticipantDish(string Id, string Name, decimal Price, string State);
 
-/// <summary>GET /guest/groups/{groupReservationId}/status.</summary>
-public sealed record GroupStatusResponse(string Status, int TotalGuests, int SubmittedGuests);
+/// <summary>GET /guest/groups/{groupReservationId}/status — status as a string ("Open", "Submitted", "Closed").
+/// The shape follows GroupReservationStatusResponse in the backend (docs/ApiRoutes.md lists other fields).</summary>
+public sealed record GroupStatusResponse(int CurrentParticipants, int MaxCapacity, string Status);

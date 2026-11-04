@@ -18,6 +18,23 @@ public sealed class GroupOrderPage(IPage page) : BasePage(page)
     public ILocator LoadFailed => Page.GetByRole(AriaRole.Alert).Filter(new() { HasText = "Couldn't load the group pre-order" });
     public ILocator RefreshButton => Page.GetByRole(AriaRole.Button, new() { Name = "Refresh", Exact = true });
     public ILocator SubmitButton => Page.GetByRole(AriaRole.Button, new() { Name = "Submit Pre-Order" });
+    public ILocator SentButton => Page.GetByRole(AriaRole.Button, new() { Name = "Pre-Order Sent" });
+    public ILocator ConfirmSubmitButton => Page.GetByRole(AriaRole.Button, new() { Name = "Submit", Exact = true });
+
+    /// <summary>"Borscht × 3" lines of the consolidated pre-order (the submitted carts only).</summary>
+    public ILocator ConsolidatedItems => Page.Locator(".consolidated-item > span:first-child");
+    public ToastComponent Toast { get; } = new(page);
+
+    /// <summary>Presses Submit Pre-Order, confirms in the dialog and waits for the service's answer.</summary>
+    public async Task SubmitAsync()
+    {
+        await SubmitButton.ClickAsync();
+        await Page.RunAndWaitForResponseAsync(
+            () => ConfirmSubmitButton.ClickAsync(),
+            response => response.Request.Method == "POST"
+                && response.Url.Contains("/group-reservations/", StringComparison.Ordinal)
+                && response.Url.EndsWith("/submit", StringComparison.Ordinal));
+    }
 
     public Task NavigateAsync(string reservationId) => NavigateToAsync($"/reservations/{reservationId}/group-order");
 

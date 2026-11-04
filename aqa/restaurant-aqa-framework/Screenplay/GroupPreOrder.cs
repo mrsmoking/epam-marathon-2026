@@ -6,8 +6,19 @@ namespace Restaurant_Aqa_Framework.Screenplay;
 /// (<see cref="Personas"/>), so several customers can take part in one scenario.</summary>
 public sealed record CustomerSession(string Email, string Password, string IdToken, string AccessToken);
 
-/// <summary>Marks that the browser already carries <paramref name="Persona"/>'s sign-in, so it is set up only once.</summary>
-public sealed record StorefrontSignIn(string Persona);
+/// <summary>Who the browser is currently signed in as, so switching people adds a new sign-in only when needed.</summary>
+public sealed record StorefrontSignIn(Someone Who);
+
+/// <summary>The owner's own pre-order of the booking, as last sent to the service.</summary>
+public sealed record OwnerPreOrder(IReadOnlyList<Api.Dtos.Orders.OrderItemRequest> Items);
+
+/// <summary>Which group a request is about: the scenario's own, or a made-up one.</summary>
+public enum GroupTarget
+{
+    TheGroup,
+    AGroupThatDoesNotExist,
+    ABookingThatDoesNotExist,
+}
 
 /// <summary>The owner's booking and the group pre-order that comes with it (any booking for two or more guests).</summary>
 public sealed record GroupBooking(string ReservationId, string GroupReservationId, string InviteToken, int GuestCount);

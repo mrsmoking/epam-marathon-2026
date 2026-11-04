@@ -8,7 +8,7 @@ public sealed class OpenTheGroupOrder(bool ofABookingThatDoesNotExist = false) :
 {
     public async Task PerformAsAsync(Actor actor)
     {
-        await actor.AttemptsToAsync(new ArriveSignedIn(Personas.Owner));
+        await actor.AttemptsToAsync(new ArriveSignedIn(Someone.TheOwner));
 
         var reservationId = ofABookingThatDoesNotExist
             ? Guid.NewGuid().ToString()

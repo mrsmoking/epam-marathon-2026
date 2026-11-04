@@ -20,8 +20,9 @@ public sealed class AddToTheCart(string guestName, string dishAlias, int quantit
     }
 }
 
-/// <summary>A guest takes some portions of a dish (by its short name) out of their own cart.</summary>
-public sealed class TakeOutOfTheCart(string guestName, string dishAlias, int quantity) : ITask
+/// <summary>A guest takes some portions of a dish (by its short name) out of their own cart. A scenario that tests
+/// a refusal passes <paramref name="mustSucceed"/> false and reads the outcome.</summary>
+public sealed class TakeOutOfTheCart(string guestName, string dishAlias, int quantity, bool mustSucceed = true) : ITask
 {
     public async Task PerformAsAsync(Actor actor)
     {
@@ -31,14 +32,15 @@ public sealed class TakeOutOfTheCart(string guestName, string dishAlias, int qua
 
         await response.CaptureAsync(await new GuestSessionsApi(actor.UsingTheApi())
             .RemoveDishAsync(guest.SessionId, new RemoveGuestDishRequest(dish.Id, quantity), guest.SessionToken));
-        if (!response.Succeeded)
+        if (mustSucceed && !response.Succeeded)
             throw new InvalidOperationException(
                 $"{guestName} could not remove {quantity} x {dishAlias}: {response.Status} {response.Body}");
     }
 }
 
-/// <summary>A guest confirms their cart, so it goes into the group pre-order when the owner submits it.</summary>
-public sealed class SubmitTheCart(string guestName) : ITask
+/// <summary>A guest confirms their cart, so it goes into the group pre-order when the owner submits it. A scenario
+/// that tests a refusal passes <paramref name="mustSucceed"/> false and reads the outcome.</summary>
+public sealed class SubmitTheCart(string guestName, bool mustSucceed = true) : ITask
 {
     public async Task PerformAsAsync(Actor actor)
     {
@@ -47,7 +49,7 @@ public sealed class SubmitTheCart(string guestName) : ITask
 
         await response.CaptureAsync(await new GuestSessionsApi(actor.UsingTheApi())
             .SubmitCartAsync(guest.SessionId, guest.SessionToken));
-        if (!response.Succeeded)
+        if (mustSucceed && !response.Succeeded)
             throw new InvalidOperationException($"{guestName} could not submit the cart: {response.Status} {response.Body}");
     }
 }

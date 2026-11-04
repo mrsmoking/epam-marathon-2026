@@ -72,6 +72,59 @@ public sealed class OutcomeStepDefinitions(Actor actor) : StepDefinitionBase(act
         await Assert.That((await Actor.AsksForAsync(new TheGroupOrderMessages())).NotFound).IsTrue()
             .Because("the screen did not say the group reservation was not found");
 
+    // Sending the group pre-order: the service's business refusals are 400 with an errorCode in the body
+    // ("GroupReservationSubmitted" for a repeat); a signed-in non-owner is 403.
+    [Then("the owner is told the pre-order cannot be sent")]
+    [Scope(Tag = "api")]
+    public async Task ThenTheOwnerIsToldThePreOrderCannotBeSent()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(400).Because($"response body was: {outcome.Body}");
+        await Assert.That(outcome.Body).DoesNotContain("GroupReservationSubmitted").Because($"response body was: {outcome.Body}");
+    }
+
+    [Then("the owner is told the pre-order cannot be sent")]
+    [Scope(Tag = "ui")]
+    public async Task ThenTheOwnerSeesThePreOrderCannotBeSent()
+    {
+        var standing = await Actor.AsksForAsync(new TheGroupOrderStanding());
+        await Assert.That(standing.Error).IsNotNull().Because($"no error was shown: {standing}");
+        await Assert.That(standing.StatusBadge).IsEqualTo("Collecting pre-orders").Because($"the screen showed {standing}");
+        await Assert.That(standing.Sent).IsFalse().Because($"the screen showed {standing}");
+    }
+
+    [Then("the owner is told the pre-order has already been sent")]
+    public async Task ThenTheOwnerIsToldThePreOrderHasAlreadyBeenSent()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(400).Because($"response body was: {outcome.Body}");
+        await Assert.That(outcome.Body).Contains("GroupReservationSubmitted").Because($"response body was: {outcome.Body}");
+    }
+
+    [Then("they are told they may not send the pre-order")]
+    public async Task ThenTheyAreToldTheyMayNotSendThePreOrder()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(403).Because($"response body was: {outcome.Body}");
+    }
+
+    // A guest's cart: an empty one cannot be submitted, a submitted one cannot be changed (both 400 from the service).
+    [Then("the guest is told the cart is empty")]
+    public async Task ThenTheGuestIsToldTheCartIsEmpty()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(400).Because($"response body was: {outcome.Body}");
+        await Assert.That(outcome.Body).Contains("cart is empty").Because($"response body was: {outcome.Body}");
+    }
+
+    [Then("the guest is told the submitted cart cannot be changed")]
+    public async Task ThenTheGuestIsToldTheSubmittedCartCannotBeChanged()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(400).Because($"response body was: {outcome.Body}");
+        await Assert.That(outcome.Body).Contains("already submitted").Because($"response body was: {outcome.Body}");
+    }
+
     [Then("the information is available")]
     [Then("the menu is shown")]
     public async Task ThenInformationIsAvailable()
