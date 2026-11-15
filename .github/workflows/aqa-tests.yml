@@ -33,10 +33,7 @@ on:
         default: ""
 
   # The scenarios run against the deployed environment and take minutes, so they are not tied to
-  # pushes or pull requests (those run the fast checks in aqa-quality.yml). They run on demand and nightly,
-  # which catches regressions in the environment itself even on days nobody touched the tests.
-  schedule:
-    - cron: "0 2 * * *"
+  # pushes or pull requests (those run the fast checks in aqa-quality.yml). They run on demand only.
 
 concurrency:
   group: aqa-tests-${{ github.ref }}
